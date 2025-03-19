@@ -2,7 +2,6 @@ from copy import deepcopy
 from utils import get_new_dict
 
 
-
 ##produce optimal social choice order for IRV or Single-winner RCV
 
 def IRV_optimal_result(cands, ballot_counts):

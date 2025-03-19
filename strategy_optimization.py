@@ -1,6 +1,6 @@
 from copy import deepcopy
 from utils import get_new_dict, clean_aggre_dict_diff, create_structure, give_winners, str_for_given_winners, return_main_sub, main_structures, sub_structures, sub_structures_at_most_k_ones_fixed_last, campaign_addition_dict_simple
-from processing import roundupdate, decode_dict, STV_optimal_result
+from RCV_optimization_processing import roundupdate, decode_dict, STV_optimal_result
 from STVandIRV_results import STV_optimal_result_simple
 from itertools import combinations
 import math

@@ -3,7 +3,6 @@ from strategy_optimization import reach_any_winners_campaign
 from candidate_removal import remove_irrelevent
 import time 
 import utils
-import numpy as np
 import os
 
 def get_ballot_counts_df(candidates_mapping, df):
@@ -74,7 +73,7 @@ def process_ballot_counts_post_elim(ballot_counts, k, candidates, elim_cands, ch
             else:
                 letter_counts[letter] = value
 
-    print("Total votes if ", elim_cands, " are eliminated")
+    print("Total votes if ", elim_cands, " are eliminated:")
     wins_during_elims = []
     for c in elec_cands:
         print(c, aggre_v_dict[c])
@@ -82,7 +81,7 @@ def process_ballot_counts_post_elim(ballot_counts, k, candidates, elim_cands, ch
             wins_during_elims.append(c)
 
     if len(wins_during_elims) >=0:
-        print("Winners during elimination are ", wins_during_elims)
+        print("Winners during elimination of lower group: ", wins_during_elims)
 
 
     print("Strict support within ", elim_cands)
@@ -94,22 +93,27 @@ def process_ballot_counts_post_elim(ballot_counts, k, candidates, elim_cands, ch
     rt, dt, collection = STV_optimal_result_simple(candidates, ballot_counts, 3, Q)
     #print(rt,dt)
     results, subresults = utils.return_main_sub(rt)
-    print('winning order is ', results)
+    print('Overall winning order is ', results)
 
     budget = budget_percent*sum(full_aggre_v_dict[cand] for cand in candidates)*0.01
+    if check_removal_here == True:
+        candidates_reduced, group_remaining, stop = remove_irrelevent(ballot_counts, rt, 
+                results[:at_least],budget , ''.join(candidates))
+        if stop == True:
+            print('We can remove ', group_remaining, ' and keep ', candidates_reduced)
+        else: 
+            print('We cannot remove any more candidates')
+
+        #print(candidates_reduced, group_remaining, stop)
 
     if check_strats == True:
+        print('Checking strategies for ', elec_cands)
         start = time.time()
         strats_frame = reach_any_winners_campaign(elec_cands, 3, Q, filtered_data, budget)
         end = time.time()
         print('total time = ' , end - start)
         print( strats_frame)
 
-    if check_removal_here == True:
-        candidates_reduced, group_remaining, stop = remove_irrelevent(ballot_counts, rt, 
-                results[:at_least],budget , ''.join(candidates))
-
-        print(candidates_reduced, group_remaining, stop)
 
 
 def generate_bootstrap_samples(data, n_samples=1000, save = False):

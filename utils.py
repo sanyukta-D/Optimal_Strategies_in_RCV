@@ -1,6 +1,6 @@
-from itertools import combinations, groupby, permutations, product
+from itertools import permutations, product
 from copy import deepcopy
-from collections import defaultdict, Counter
+from collections import Counter
 import math
 
 ### Basic operations- generating voter data, doing permutations etc
