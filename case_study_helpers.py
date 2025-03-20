@@ -4,6 +4,8 @@ from candidate_removal import remove_irrelevent
 import time 
 import utils
 import os
+import pandas as pd
+import json
 
 def get_ballot_counts_df(candidates_mapping, df):
     # Initialize a dictionary to store the counts of each ballot type as strings
@@ -19,7 +21,6 @@ def get_ballot_counts_df(candidates_mapping, df):
             if candidate in candidates_mapping.keys():
                 valid_candidates.append(candidates_mapping[candidate])
         
-
         # Check if the ballot is empty (no valid candidates)
         if valid_candidates:  # Skip empty ballots
             
@@ -30,10 +31,37 @@ def get_ballot_counts_df(candidates_mapping, df):
                 ballot_counts[ballot_type] = 1
             else:
                 ballot_counts[ballot_type] += 1
-    print('Total votes: ', sum(ballot_counts.values()))
+    #print('Total votes: ', sum(ballot_counts.values()))
     return ballot_counts
 
-def process_ballot_counts_post_elim(ballot_counts, k, candidates, elim_cands, check_strats=False, budget_percent = 0, check_removal_here = False, at_least = 8):
+def get_ballot_counts_df_republican_primary(candidates_mapping, df):
+    # Initialize a dictionary to store the counts of each ballot type as strings
+    ballot_counts = {}
+    # Iterate through the DataFrame rows
+    #df['weight'] = df['weight']*800/df['weight'].sum()
+    for index, row in df.iterrows():
+        # Initialize an empty list to store valid candidates
+        valid_candidates = []
+
+        # Iterate through columns rank1 to rank5
+        for i in range(1, 14):
+            candidate = row[f'rank{i}']
+            valid_candidates.append(candidates_mapping[candidate])
+
+        ballot_type = ''.join(valid_candidates)
+
+        # Use the 'weight' column to determine the number of voters for this ballot type
+        weight = row['weight']
+
+        # Add the weight to the count for this ballot type in the dictionary
+        if ballot_type not in ballot_counts:
+            ballot_counts[ballot_type] = weight
+        else:
+            ballot_counts[ballot_type] += weight
+    
+    return ballot_counts
+
+def process_ballot_counts_post_elim(ballot_counts, k, candidates, elim_cands, check_strats=False, budget_percent=0, check_removal_here=False, keep_at_least=8):
     # Initialize a dictionary for filtered data
     filtered_data = {}
     elim_strings = ''.join(char for char in elim_cands)
@@ -42,7 +70,7 @@ def process_ballot_counts_post_elim(ballot_counts, k, candidates, elim_cands, ch
     for key, value in ballot_counts.items():
         new_key = ''.join(char for char in key if char not in elim_strings)
         
-        filtered_data[new_key] =   filtered_data.get(new_key, 0) + value
+        filtered_data[new_key] = filtered_data.get(new_key, 0) + value
     filtered_data.pop('', None)
 
     elec_cands = [cand for cand in candidates if cand not in elim_cands]
@@ -50,12 +78,14 @@ def process_ballot_counts_post_elim(ballot_counts, k, candidates, elim_cands, ch
     full_aggre_v_dict = utils.get_new_dict(ballot_counts)
     aggre_v_dict = utils.get_new_dict(filtered_data)
 
-    Q = round(sum(full_aggre_v_dict[cand] for cand in candidates)/(k+1)+1,3)
-    print("Q = ", Q)
+    Q = round(sum(full_aggre_v_dict[cand] for cand in candidates)/(k+1)+1, 3)
+    print("\n" + "="*50)
+    print(f"Q = {Q}")
+    print("="*50 + "\n")
     
     letter_counts = {}
 
-    #strict_support
+    # strict_support
     for key, value in ballot_counts.items():
         i = 0
         newset = []
@@ -73,46 +103,59 @@ def process_ballot_counts_post_elim(ballot_counts, k, candidates, elim_cands, ch
             else:
                 letter_counts[letter] = value
 
-    print("Total votes if ", elim_cands, " are eliminated:")
+    print("\n" + "-"*50)
+    print(f"Total votes if {elim_cands} are eliminated:")
+    print("-"*50)
+    
     wins_during_elims = []
     for c in elec_cands:
-        print(c, aggre_v_dict[c])
-        if aggre_v_dict[c]>= Q:
+        print(f"  {c}: {aggre_v_dict[c]}")
+        if aggre_v_dict[c] >= Q:
             wins_during_elims.append(c)
 
-    if len(wins_during_elims) >=0:
-        print("Winners during elimination of lower group: ", wins_during_elims)
+    if len(wins_during_elims) > 0:
+        print("\nWinners during elimination of lower group:")
+        print(f"  {wins_during_elims}")
+    print("-"*50 + "\n")
 
+    print("-"*50)
+    print(f"Strict support within {elim_cands}:")
+    for letter, count in letter_counts.items():
+        print(f"  {letter}: {count}")
+    
+    best_c_irrelevant = max(letter_counts, key=letter_counts.get) if letter_counts else None
+    if best_c_irrelevant:
+        print(f"\nMax strict support is with: {best_c_irrelevant}")
+    print("-"*50 + "\n")
 
-    print("Strict support within ", elim_cands)
-    print(letter_counts)
-
-    best_c_irrelevant = max(letter_counts, key=letter_counts.get)
-    print("Max strict support is with ", best_c_irrelevant)
-
-    rt, dt, collection = STV_optimal_result_simple(candidates, ballot_counts, 3, Q)
-    #print(rt,dt)
+    rt, dt, collection = STV_optimal_result_simple(candidates, ballot_counts, k, Q)
     results, subresults = utils.return_main_sub(rt)
-    print('Overall winning order is ', results)
+    print("="*50)
+    print(f"Overall winning order is: {results}")
+    print("="*50 + "\n")
 
-    budget = budget_percent*sum(full_aggre_v_dict[cand] for cand in candidates)*0.01
-    if check_removal_here == True:
+    budget = budget_percent * sum(full_aggre_v_dict[cand] for cand in candidates) * 0.01
+    if check_removal_here:
         candidates_reduced, group_remaining, stop = remove_irrelevent(ballot_counts, rt, 
-                results[:at_least],budget , ''.join(candidates))
-        if stop == True:
-            print('We can remove ', group_remaining, ' and keep ', candidates_reduced)
+                results[:keep_at_least], budget, ''.join(candidates))
+        
+        print("-"*50)
+        if stop:
+            print(f"We can remove {group_remaining} and keep {candidates_reduced}")
         else: 
-            print('We cannot remove any more candidates')
+            print("We cannot remove any more candidates")
+        print("-"*50 + "\n")
 
-        #print(candidates_reduced, group_remaining, stop)
-
-    if check_strats == True:
-        print('Checking strategies for ', elec_cands)
+    if check_strats:
+        print("="*50)
+        print(f"Checking strategies for {elec_cands}")
         start = time.time()
-        strats_frame = reach_any_winners_campaign(elec_cands, 3, Q, filtered_data, budget)
+        strats_frame = reach_any_winners_campaign(elec_cands, k, Q, filtered_data, budget)
         end = time.time()
-        print('total time = ' , end - start)
-        print( strats_frame)
+        print(f"Total time: {end - start:.2f} seconds")
+        print("\nStrategy frame:")
+        print(strats_frame)
+        print("="*50)
 
 
 
@@ -145,5 +188,73 @@ def generate_bootstrap_samples(data, n_samples=1000, save = False):
         
     return bootstrap_samples
 
+def process_bootstrap_samples(k, candidates_mapping, bootstrap_samples_dir, bootstrap_files, budget_percent, keep_at_least, iters = 10, want_strats = False, save = False):
+    candidates = list(candidates_mapping.values())
+    it = 0
+    algo_works = 0
+    data_samples = []
+    for file in bootstrap_files:
+        start = time.time()
+        
+        stop = False
+        it += 1
+    
+        if it > iters:
+            break
+
+        sample_file_path = os.path.join(bootstrap_samples_dir, file)
+        
+        df = pd.read_csv(sample_file_path)
+    
+        if 'rank1' in df.columns:
+            ballot_counts = get_ballot_counts_df_republican_primary(candidates_mapping, df)
+            Q = 800
+            budget = budget_percent*sum(ballot_counts.values())*0.01
+        else:
+            ballot_counts = get_ballot_counts_df(candidates_mapping, df)
+            Q = round(sum(ballot_counts.values())/(k+1)+1,3) 
+            budget = budget_percent*sum(ballot_counts.values())*0.01
+    
+        # Compute results using STV
+        rt, dt, collection = STV_optimal_result_simple(candidates, ballot_counts, k, Q)
+        results, subresults = utils.return_main_sub(rt)
+        candidates_reduced, group, stop = remove_irrelevent(ballot_counts, rt, 
+                results[:keep_at_least], budget, ''.join(candidates))
+    
+        #print(f"Iteration {it}: Candidates = {candidates_reduced}")
+
+        if stop:
+            algo_works += 1
+
+            if want_strats == True:
+
+                # Initialize a dictionary for filtered data
+                filtered_data = {}
+
+                # Remove letters {G, H, I, J, K, L} while retaining the rest of the string
+                for key, value in ballot_counts.items():
+                    new_key = ''.join(char for char in key if char not in group)
+                    filtered_data[new_key] = filtered_data.get(new_key, 0) + value
+                filtered_data.pop('', None)
+        
+                strats_frame = reach_any_winners_campaign(candidates_reduced, k, Q, filtered_data, budget)
+                data_samples.append(strats_frame)
+
+                if save == True:
+                    # Creating a directory to store all the strategy optimization results
+                    output_dir = 'strategy_optimization_results'
+                    os.makedirs(output_dir, exist_ok=True)
+                    # Saving the strategy optimization results as a JSON file
+
+                    save_path = os.path.join(output_dir, f"iteration_{it}.json")
+                    with open(save_path, "w") as f:
+                        json.dump({"iteration": it, "strats_frame": strats_frame}, f, indent=4)
+
+                    print(f"Iteration {it}: strats_frame = {strats_frame}")
+            
+        end = time.time()    
+        #print('Total time =', end - start)
+    print(algo_works, it-1, ' Removal Efficiency is ', algo_works/(it-1)*100, '%')
+    return algo_works, data_samples
 
 

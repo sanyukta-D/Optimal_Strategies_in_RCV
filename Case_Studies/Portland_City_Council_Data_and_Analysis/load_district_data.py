@@ -14,11 +14,21 @@ for district_num in range(1, 5):  # Districts 1-4
     df = pd.read_csv(file_path)
     df = df.drop(columns=['RowNumber'])
     
-    # Store DataFrame in dictionary
+    # Get bootstrap samples directory
+    bootstrap_dir = os.path.join(BASE_DIR, f"Dis_{district_num}", f"bootstrap_samples_dis{district_num}")
+    
+    # Get list of bootstrap files if directory exists
+    bootstrap_files = []
+    if os.path.exists(bootstrap_dir):
+        bootstrap_files = os.listdir(bootstrap_dir)
+    
+    # Store DataFrame and bootstrap files in dictionary
     district_data[district_num] = {
-        'df': df
+        'df': df,
+        'bootstrap_dir': bootstrap_dir,
+        'bootstrap_files': bootstrap_files
     }
-
+    
 # Define candidate mappings
 district_data[1]['candidates_mapping'] = {
     "Candace Avalos": "A",
