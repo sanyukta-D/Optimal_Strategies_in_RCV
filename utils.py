@@ -3,93 +3,98 @@ from copy import deepcopy
 from collections import Counter
 import math
 
-### Basic operations- generating voter data, doing permutations etc
+###########################################
+# HELPER FUNCTIONS
+###########################################
 
-#a function for checking if two lists have any common elements
 def common_member(a, b): 
+    """Check if two lists have any common elements."""
     a_set = set(a)
     b_set = set(b)
-    if len(a_set.intersection(b_set)) > 0:
-        return(True)
-    return(False)  
+    return len(a_set.intersection(b_set)) > 0
 
-#given a list of candidates, this gives all possible orderings- n! in total
+###########################################
+# PERMUTATION AND STRUCTURE GENERATION
+###########################################
+
 def main_structures(candidates):
-    PotentialSets = [list(perm) for perm in permutations(candidates, len(candidates))]
-    return PotentialSets
+    """Generate all possible orderings of candidates - n! in total."""
+    return [list(perm) for perm in permutations(candidates, len(candidates))]
 
-#returns a list of main strs for given list of winners
 def str_for_given_winners(winners, candidates):
+    """Return a list of main structures for given list of winners."""
     losers = [item for item in candidates if item not in winners]
-    PotentialSets=[]
+    potential_sets = []
 
     for perm_w in permutations(winners, len(winners)):
         for perm_l in permutations(losers, len(losers)):
-            PotentialSets.append(list(perm_w)+list(perm_l))
-    return PotentialSets
+            potential_sets.append(list(perm_w) + list(perm_l))
+    return potential_sets
 
-#returns a list of main strs for given list of losers
 def str_for_given_losers(losers, candidates):
+    """Return a list of main structures for given list of losers."""
     winners = [item for item in candidates if item not in losers]
-    PotentialSets=[]
+    potential_sets = []
 
     for perm_w in permutations(winners, len(winners)):
         for perm_l in permutations(losers, len(losers)):
-            PotentialSets.append(list(perm_w)+list(perm_l))
-    return PotentialSets
+            potential_sets.append(list(perm_w) + list(perm_l))
+    return potential_sets
     
-#returns a list of main strs for given list of winners and losers
 def str_for_given_winners_losers(winners, candidates, losers):
-    middle = [item for item in candidates if item not in winners or losers]
-    PotentialSets=[]
+    """Return a list of main structures for given lists of winners and losers."""
+    middle = [item for item in candidates if item not in winners and item not in losers]
+    potential_sets = []
 
     for perm_w in permutations(winners, len(winners)):
-        for perm_l in permutations(losers, len(losers)):
-            for perm_m in permutations(middle, len(middle)):
-                PotentialSets.append(list(perm_w)+list(perm_m)+list(perm_l))
-    return PotentialSets
-    
+        for perm_m in permutations(middle, len(middle)):
+            for perm_l in permutations(losers, len(losers)):
+                potential_sets.append(list(perm_w) + list(perm_m) + list(perm_l))
+    return potential_sets
 
-#given a list of candidates, this gives all possible W/L round result types- 2^(n-1) in total
 def sub_structures(candidates):
-    l = len(candidates)-1
-    results = list(product([0,1],repeat=l))
-    roundresults = [list(ele)+[1] for ele in results]
-    return roundresults
+    """Generate all possible W/L round result types - 2^(n-1) in total."""
+    l = len(candidates) - 1
+    results = list(product([0, 1], repeat=l))
+    return [list(ele) + [1] for ele in results]
 
-# Generate all possible combinations of 0 and 1 with z zeros at the beginning and (l - z) zeros in the middle
-# thm that bounds the min number of initial losses
 def sub_structures_specific(candidates, z):
+    """Generate combinations with z zeros at beginning and (l-z) zeros in middle."""
     l = len(candidates) - 1
     
     prefix = [0] * z
     middle = list(product([0, 1], repeat=l - z))
     suffix = [1]
     
-    # Combine the prefix, middle, and suffix to form the final combinations
-    results = [prefix + list(ele) + suffix for ele in middle]
-    
-    return results
+    return [prefix + list(ele) + suffix for ele in middle]
 
 def sub_structures_at_most_k_ones_fixed_last(candidates, k):
     """
-    Returns all binary sequences of length len(candidates)
+    Return all binary sequences of length len(candidates)
     whose last bit is forced to 1 and which have at most k ones.
     """
     n = len(candidates)
     results = []
-    # We'll generate sequences of length n-1, then append 1
+    # Generate sequences of length n-1, then append 1
     for bits in product([0, 1], repeat=n-1):
         # The total number of ones includes the appended 1
         if sum(bits) + 1 <= k:
             results.append(list(bits) + [1])
     return results
 
-# given a main and sub structure, this gives a dict and a list showing who wins/loses in each round, in the order.
+###########################################
+# STRUCTURE OPERATIONS
+###########################################
+
 def create_structure(main, sub):
+    """
+    Create a structure showing who wins/loses in each round.
+    Returns both a list and a dictionary representation.
+    """
     maincopy = deepcopy(main)
     results = []
-    redict = {} # mapping candidates to their results in the round order.
+    redict = {}  # Mapping candidates to their results in round order
+    
     for i in sub:
         if i == 0:
             res = maincopy.pop(-1)
@@ -97,71 +102,80 @@ def create_structure(main, sub):
         else:
             res = maincopy.pop(0)
             results.append([res, i])
-        redict[res] = i     
+        redict[res] = i
+           
     return results, redict
 
-# given a list showing who wins/loses in each round, this gives the main and sub structure
 def return_main_sub(results_list):
+    """
+    Convert a list showing who wins/loses in each round back to main and sub structure.
+    """
     strt = deepcopy(results_list)
-    sub = [] # mapping candidates to their results in the round order.
-    win=[]
-    lose=[]
+    sub = []
+    win = []
+    lose = []
+    
     for i in strt:
-        if i[1]>0:
-            win= win +[i[0]]
+        if i[1] > 0:
+            win = win + [i[0]]
         else:
-            lose= [i[0]] +lose
+            lose = [i[0]] + lose
         sub.append(i[1])
-    main = win+lose
+        
+    main = win + lose
     return main, sub
 
+def give_winners(main_st, k):
+    """Return the list of winners, given main structure."""
+    return main_st[0:k]
 
-#while transferring from the last candidate to the current ones, we may pass those through checked candidates
-#so here, we make permutations of checked candidates and add these paths between the transfers
+###########################################
+# PERMUTATION AND VOTE PATTERN GENERATION
+###########################################
+
 def make_perms_transfer(candidates):
-    perms_candidates = [] 
+    """
+    Generate all permutations of checked candidates to add paths between transfers.
+    """
+    perms_candidates = []
     for l in range(len(candidates)):
         perms = [list(perm) for perm in permutations(candidates, l)]
-        perms_candidates = perms_candidates+perms
+        perms_candidates.extend(perms)
     return perms_candidates
 
-# This is a general function for making all possible vote patterns of specified length, given the set of candidates. 
 def make_perms(candidates, min_ballot_length=0):
-    perms_candidates = [] 
+    """
+    Generate all possible vote patterns of specified length for given candidates.
+    """
+    perms_candidates = []
     for l in range(min_ballot_length, len(candidates)):
         perms = [list(perm) for perm in permutations(candidates, l+1)]
-        perms_candidates = perms_candidates+perms
+        perms_candidates.extend(perms)
     return perms_candidates
 
-# initiates a dict of all possible winner types
 def dict_perm_k(candidates, k):
+    """Initialize a dictionary of all possible winner types."""
     dict_new = {}
     for perm in permutations(candidates, k):
         dict_new[''.join(list(perm))] = 0
-        
     return dict_new
 
-# Returns the list of winners, given main str.
-def give_winners(main_st, k):
-    winners = main_st[0:k]
-    return winners
+###########################################
+# DICTIONARY OPERATIONS
+###########################################
 
+def non_agg_dict(ballot_types, num_voters):
+    """
+    Convert data in (type, num) format to a non-aggregated dictionary.
+    """
+    string_ballots = [''.join(ballot) for ballot in ballot_types]
+    return dict(zip(string_ballots, num_voters))
 
-### Basic dict operations- aggregation, non-aggregation, converting investment into complete aggr-data etc
-
-# takes data in (type, num) format through lists and returns it in a dict format, but non-aggregated. 
-def non_agg_dict(Ballottypes, NumVoters):
-    stringballots = []
-    for ballot in Ballottypes:
-        ballotnew = ''.join(ballot)
-        stringballots.append(ballotnew)
-
-    non_aggre_voterdata_dict = dict(zip(stringballots, NumVoters))
-    return non_aggre_voterdata_dict
-
-#Take non-agg data and returns the complete aggr_dict.
-#creates a dict with all V variables, where V_{AB} includes total votes that have first and second choices as A and B.
 def agg_dict(candidates, non_aggre_voterdata):
+    """
+    Create a complete aggregated dictionary from non-aggregated data.
+    V_{AB} includes total votes with first and second choices as A and B.
+    """
     aggre_v_dict = Counter()
     permset = make_perms(candidates)
 
@@ -172,11 +186,10 @@ def agg_dict(candidates, non_aggre_voterdata):
             aggre_v_dict[v] += non_aggre_voterdata.get(''.join(ballot), 0)
 
     # Filter out keys with zero counts
-    final_dict = {x: y for x, y in aggre_v_dict.items() if y > 0}
-    return final_dict
+    return {x: y for x, y in aggre_v_dict.items() if y > 0}
 
-# converts any investment or ballot counts into aggregated investment
 def get_new_dict(my_dict):
+    """Convert any investment or ballot counts into aggregated investment."""
     new_dict = {}
     
     # Iterate through the keys and values in my_dict
@@ -189,44 +202,42 @@ def get_new_dict(my_dict):
             new_dict[substring] = new_dict.get(substring, 0) + value
     
     # Filter out keys with zero counts
-    final_dict = {x: y for x, y in new_dict.items() if y > 0}
-    return final_dict
+    return {x: y for x, y in new_dict.items() if y > 0}
 
-
-## Given the investment and the original aggr_dict, this returns the final aggr_dict.
 def campaign_addition_dict(my_total_investment_dict, candidates, aggre_v_dict):
-    
+    """
+    Given investment and original aggregated dict, return the final aggregated dict.
+    """
     my_total_investment_dict_d = deepcopy(my_total_investment_dict)
     aggre_v_dict_d = deepcopy(aggre_v_dict)
   
     agg_total_investment_dict = get_new_dict(my_total_investment_dict_d)
 
     for key in agg_total_investment_dict.keys():
-
-        aggre_v_dict_d[key] = aggre_v_dict_d.get(key,0) + math.ceil(agg_total_investment_dict.get(key,0))
+        aggre_v_dict_d[key] = aggre_v_dict_d.get(key, 0) + math.ceil(agg_total_investment_dict.get(key, 0))
     
     return aggre_v_dict_d
 
-## Given the investment and the original aggr_dict, this returns the final aggr_dict.
 def campaign_addition_dict_simple(my_total_investment_count, candidates, ballot_counts):
-    
+    """
+    Simplified version of campaign_addition_dict without aggregation step.
+    """
     my_total_investment_count_d = deepcopy(my_total_investment_count)
     ballot_counts_d = deepcopy(ballot_counts)
 
     for key in my_total_investment_count_d.keys():
-
-        ballot_counts_d[key] = ballot_counts_d.get(key,0) + math.ceil(my_total_investment_count_d.get(key,0))
+        ballot_counts_d[key] = ballot_counts_d.get(key, 0) + math.ceil(my_total_investment_count_d.get(key, 0))
     
     return ballot_counts_d
 
-## Reverse of aggregation operation. Given an aggregated dict, this gives a non-agg dict.
 def clean_aggre_dict_diff(anydict):
-    cleandict=deepcopy(anydict)
+    """
+    Reverse of aggregation operation. Convert aggregated dict to non-aggregated dict.
+    """
+    cleandict = deepcopy(anydict)
     for key1 in cleandict.keys():
         for key2 in cleandict.keys():
-            if key2[0:len(key1)]==key1 and key1!=key2:
-               
-                cleandict[key1] = cleandict[key1]-cleandict[key2]
-    final_dict = {x:y for x,y in cleandict.items() if y>0}
-    return final_dict
-
+            if key2[0:len(key1)] == key1 and key1 != key2:
+                cleandict[key1] = cleandict[key1] - cleandict[key2]
+    
+    return {x: y for x, y in cleandict.items() if y > 0}

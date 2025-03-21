@@ -2,40 +2,51 @@ from copy import deepcopy
 from utils import get_new_dict
 
 
-##produce optimal social choice order for IRV or Single-winner RCV
-
 def IRV_optimal_result(cands, ballot_counts):
+    """
+    Produce optimal social choice order for Instant Runoff Voting (IRV) or Single-winner RCV.
     
-    candsnew= deepcopy(cands)
-    aggre_v_dict_mynew = get_new_dict(ballot_counts)
-    results=[]
-    
-    for i in range(len(candsnew)):
-        relevant_aggre_dict={}
-    
-        for c in candsnew:
+    Args:
+        cands (list): List of candidates.
+        ballot_counts (dict): Dictionary where keys are ranked ballots (as strings) and values are counts.
         
-            relevant_aggre_dict[c] =  aggre_v_dict_mynew.get(c, 0)
-            
-        worst_c = min(relevant_aggre_dict, key=relevant_aggre_dict.get)
+    Returns:
+        list: Ordered list of candidates from last eliminated to first.
+    """
+    candidates_remaining = deepcopy(cands)
+    aggregated_votes = get_new_dict(ballot_counts)
+    results = []
+    
+    # Eliminate candidates one by one
+    for _ in range(len(candidates_remaining)):
+        # Count first-choice votes for remaining candidates
+        vote_counts = {
+            candidate: aggregated_votes.get(candidate, 0) 
+            for candidate in candidates_remaining
+        }
         
-        candsnew.remove(worst_c)
-        results.insert(0, worst_c)
-        # Initialize a dictionary for filtered data
-        filtered_data = {}
-
-        for key, value in ballot_counts.items():
-            new_key = ''.join(char for char in key if char not in results)
-
-            filtered_data[new_key] =   filtered_data.get(new_key, 0) + value
-            
-        filtered_data.pop('', None)
-        aggre_v_dict_mynew={}
-
-        aggre_v_dict_mynew = get_new_dict(filtered_data)
+        # Find candidate with fewest votes
+        worst_candidate = min(vote_counts, key=vote_counts.get)
+        
+        # Remove candidate from remaining list and add to results
+        candidates_remaining.remove(worst_candidate)
+        results.insert(0, worst_candidate)
+        
+        # Redistribute votes from ballots containing eliminated candidates
+        filtered_ballots = {}
+        for ballot, count in ballot_counts.items():
+            # Remove all eliminated candidates from ballots
+            new_ballot = ''.join(char for char in ballot if char not in results)
+            filtered_ballots[new_ballot] = filtered_ballots.get(new_ballot, 0) + count
+        
+        # Remove empty ballots
+        filtered_ballots.pop('', None)
+        
+        # Recalculate aggregated votes
+        aggregated_votes = get_new_dict(filtered_ballots)
         
     return results
-    
+
 
 def STV_optimal_result_simple(cands, ballot_counts, k, Q):
     """
@@ -45,95 +56,110 @@ def STV_optimal_result_simple(cands, ballot_counts, k, Q):
         cands (list): List of candidates.
         ballot_counts (dict): Dictionary where keys are ranked ballots (as strings) and values are counts.
         k (int): Number of winners.
+        Q (float): Quota threshold for winning.
 
     Returns:
-        list, dict: List of events with winners (1) and eliminations (0), and a dictionary summarizing the same.
-        collection/list of updated dicts of remaining votes in every round
+        tuple: Contains three elements:
+            - List of events with winners (1) and eliminations (0)
+            - Dictionary summarizing results for each candidate
+            - List of ballot states in each round
     """
-    candsnew = deepcopy(cands)
-    aggre_v_dict_mynew = get_new_dict(ballot_counts)
+    candidates_remaining = deepcopy(cands)
+    aggregated_votes = get_new_dict(ballot_counts)
     results = []
     event_log = []
-    result_dict = {c: 0 for c in cands}
+    result_dict = {candidate: 0 for candidate in cands}
    
-    collection = []
+    # Track ballot state in each round
+    round_history = []
     current_round = 0
-    collection.append([ballot_counts, current_round])
+    round_history.append([ballot_counts, current_round])
 
-    # Calculate the Droop quota
-    total_votes = sum(ballot_counts.values())
-
-    while candsnew:  # Process all candidates until all are either winners or eliminated
-        current_round = current_round + 1 
-        relevant_aggre_dict = {}
-
+    # Process candidates until all are either winners or eliminated
+    while candidates_remaining:
+        current_round += 1
+        
         # Calculate first-choice votes for remaining candidates
-        for c in candsnew:
-            relevant_aggre_dict[c] = aggre_v_dict_mynew.get(c, 0)
+        vote_counts = {
+            candidate: aggregated_votes.get(candidate, 0) 
+            for candidate in candidates_remaining
+        }
 
         # Check if any candidate meets the quota
         winner = None
-        for candidate, votes in relevant_aggre_dict.items():
-            if votes >= Q:  # Ensure only `k` winners
-                winner = max(relevant_aggre_dict, key=relevant_aggre_dict.get)
-            
+        for candidate, votes in vote_counts.items():
+            if votes >= Q:
+                # Select the candidate with the most votes who meets quota
+                winner = max(vote_counts, key=vote_counts.get)
+                
+                # Record winner
                 event_log.append([winner, 1])
                 result_dict[winner] = 1
-                candsnew.remove(winner)
+                candidates_remaining.remove(winner)
+                results.append(winner)
 
                 # Distribute surplus votes proportionally
                 surplus = votes - Q
                 if surplus > 0:
                     transfer_weight = surplus / votes
-                    filtered_data_1 = {}
+                    new_ballots = {}
 
-                    for key, value in ballot_counts.items():
-                        if key.startswith(winner):
-                            new_key = key[1:]  # Remove the winner from the ballot
-                            filtered_data_1[new_key] = filtered_data_1.get(new_key, 0) + value * transfer_weight
+                    # Redistribute votes
+                    for ballot, count in ballot_counts.items():
+                        if ballot.startswith(winner):
+                            # Remove the winner from the ballot
+                            new_ballot = ballot[1:]
+                            new_ballots[new_ballot] = new_ballots.get(new_ballot, 0) + count * transfer_weight
                         else:
-                            if winner in key:
-                                newkey = ''.join(char for char in key if char not in [winner])
-                                filtered_data_1[newkey] = filtered_data_1.get(newkey, 0) + value
+                            if winner in ballot:
+                                # Remove winner from anywhere in ballot
+                                new_ballot = ''.join(char for char in ballot if char != winner)
+                                new_ballots[new_ballot] = new_ballots.get(new_ballot, 0) + count
                             else:
-                                filtered_data_1[key] = filtered_data_1.get(key, 0) + value
-                        
-
-                filtered_data_1.pop('', None)
-                results.append(winner)
+                                # Keep ballot as is
+                                new_ballots[ballot] = new_ballots.get(ballot, 0) + count
+                    
+                    # Clean up and update
+                    new_ballots.pop('', None)
+                    ballot_counts = new_ballots
                 break
 
-        if winner is None:  # No candidate meets the quota, eliminate the lowest
-            if not relevant_aggre_dict:  # Check if relevant_aggre_dict is empty
-                break  # Exit the loop if no candidates remain
-        
-
-            loser = min(relevant_aggre_dict, key=relevant_aggre_dict.get)
-            candsnew.remove(loser)
+        # If no candidate meets the quota, eliminate the lowest
+        if winner is None:
+            if not vote_counts:  # Check if no candidates remain
+                break
+            
+            # Find candidate with fewest votes
+            loser = min(vote_counts, key=vote_counts.get)
+            
+            # Record elimination
+            candidates_remaining.remove(loser)
             event_log.append([loser, 0])
             result_dict[loser] = 0
             results.append(loser)
 
             # Redistribute votes of the eliminated candidate
-            filtered_data_1 = {}
-
-            for key, value in ballot_counts.items():
-                if key.startswith(loser):
-                    new_key = key[1:]  # Remove the loser from the ballot
-                    filtered_data_1[new_key] = filtered_data_1.get(new_key, 0) + value
+            new_ballots = {}
+            for ballot, count in ballot_counts.items():
+                if ballot.startswith(loser):
+                    # Remove the loser from the start of the ballot
+                    new_ballot = ballot[1:]
+                    new_ballots[new_ballot] = new_ballots.get(new_ballot, 0) + count
                 else:
-                    if loser in key:
-                        newkey = ''.join(char for char in key if char not in [loser])
-                        filtered_data_1[newkey] = filtered_data_1.get(newkey, 0) + value
+                    if loser in ballot:
+                        # Remove loser from anywhere in ballot
+                        new_ballot = ''.join(char for char in ballot if char != loser)
+                        new_ballots[new_ballot] = new_ballots.get(new_ballot, 0) + count
                     else:
-                        filtered_data_1[key] = filtered_data_1.get(key, 0) + value
+                        # Keep ballot as is
+                        new_ballots[ballot] = new_ballots.get(ballot, 0) + count
 
-            filtered_data_1.pop('', None)
+            # Clean up and update
+            new_ballots.pop('', None)
+            ballot_counts = new_ballots
 
-        aggre_v_dict_mynew={}
-        ballot_counts = filtered_data_1
-        aggre_v_dict_mynew = get_new_dict(ballot_counts)
-        collection.append([ballot_counts, current_round])
+        # Recalculate votes and record round state
+        aggregated_votes = get_new_dict(ballot_counts)
+        round_history.append([ballot_counts, current_round])
 
-
-    return event_log, result_dict, collection
+    return event_log, result_dict, round_history

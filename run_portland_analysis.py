@@ -3,6 +3,7 @@
 
 # Standard library imports
 import os
+import json
 
 # Local application/library specific imports
 from Case_Studies.Portland_City_Council_Data_and_Analysis.load_district_data import district_data
@@ -95,16 +96,42 @@ def analyze_portland_district(district_number, k=3, budget_percent=4.15, keep_at
     
     return results, figure, algo_works, data_samples
 
+def get_bootstrat_analysis_samples():
+        # Define the output directory where JSON files were saved
+    output_dir = "Case_Studies/Portland_City_Council_Data_and_Analysis/Dis_1/final_results_dis1"  # Replace with your actual directory
+
+    # Initialize an empty list to store data samples
+    data_samples = []
+
+    # Get all JSON files in the output directory
+    json_files = sorted([f for f in os.listdir(output_dir) if f.startswith("iteration_") and f.endswith(".json")])
+
+    # Load data from each JSON file
+    for file in json_files:
+        file_path = os.path.join(output_dir, file)
+        with open(file_path, "r") as f:
+            data = json.load(f)
+            data_samples.append(data["strats_frame"])
+    return data_samples
 
 if __name__ == "__main__":
     # Example usage
-    district_number = 4
-    results, figure, algo_works, data_samples = analyze_portland_district(
-        district_number=district_number,
-        k=3,
-        budget_percent=4.15,
-        keep_at_least=7,
-        bootstrap_iters=20,
-        show_plots=True,
+    data_samples = get_bootstrat_analysis_samples()
+    comprehensive_voting_analysis(
+        data_samples=data_samples,
+        total_votes=42686,
+        algo_works=84,
+        budget_percent=4,
+        show_plots=False,
         print_results=True
     )
+    district_number = 1
+    # results, figure, algo_works, data_samples = analyze_portland_district(
+    #     district_number=district_number,
+    #     k=3,
+    #     budget_percent=4.15,
+    #     keep_at_least=7,
+    #     bootstrap_iters=20,
+    #     show_plots=True,
+    #     print_results=True
+    # )

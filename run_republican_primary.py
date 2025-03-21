@@ -3,6 +3,7 @@
 
 # Standard library imports
 import os
+import json
 
 # Local application/library specific imports
 from Case_Studies.Republican_Primary_Case_Data_and_Analysis.load_data import election_data
@@ -90,16 +91,42 @@ def analyze_republican_primary(k=1, budget_percent=4.85, keep_at_least=6,
     
     return results, figure, algo_works, data_samples
 
+def get_bootstrat_analysis_samples():
+        # Define the output directory where JSON files were saved
+    output_dir = "Case_Studies/Republican_Primary_Case_Data_and_Analysis/final_results_5_percent"  # Replace with your actual directory
+
+    # Initialize an empty list to store data samples
+    data_samples = []
+
+    # Get all JSON files in the output directory
+    json_files = sorted([f for f in os.listdir(output_dir) if f.startswith("iteration_") and f.endswith(".json")])
+
+    # Load data from each JSON file
+    for file in json_files:
+        file_path = os.path.join(output_dir, file)
+        with open(file_path, "r") as f:
+            data = json.load(f)
+            data_samples.append(data["strats_frame"])
+    return data_samples
 
 if __name__ == "__main__":
-    # Run the Republican Primary analysis
-    results, figure, algo_works, data_samples = analyze_republican_primary(
-        k=1,
-        budget_percent=4.85,
-        keep_at_least=6,
-        bootstrap_k=2,
-        bootstrap_keep=8,
-        bootstrap_iters=100,
-        show_plots=True,
+    data_samples = get_bootstrat_analysis_samples()
+    comprehensive_voting_analysis(
+        data_samples=data_samples,
+        total_votes=801,
+        algo_works=893,
+        budget_percent=5,
+        show_plots=False,
         print_results=True
     )
+    # # Run the Republican Primary analysis
+    # results, figure, algo_works, data_samples = analyze_republican_primary(
+    #     k=1,
+    #     budget_percent=4.85,
+    #     keep_at_least=6,
+    #     bootstrap_k=2,
+    #     bootstrap_keep=8,
+    #     bootstrap_iters=1,
+    #     show_plots=True,
+    #     print_results=True
+    # )

@@ -3,6 +3,10 @@ from itertools import combinations
 import numpy as np
 import matplotlib.pyplot as plt
 
+#######################
+# Core Analysis Functions
+#######################
+
 def analyze_voting_combinations(data_samples):
     """
     Analyzes voting data to track winning combinations and additional votes needed.
@@ -108,6 +112,10 @@ def calculate_winning_frequency(data_samples):
 
     return winning_frequency
 
+
+#######################
+# Statistical Analysis Functions
+#######################
 
 def calculate_vote_addition_statistics(data_samples, total_votes, winning_frequency, algo_works, budget=None):
     """
@@ -271,6 +279,10 @@ def analyze_addition_distribution(data_samples):
     return formatted_distribution, dict(addition_frequencies)
 
 
+#######################
+# Deviation Analysis Functions
+#######################
+
 def average_non_zero_deviations(data_samples):
     """
     Calculate the average non-zero deviations for each dictionary in data_samples.
@@ -343,6 +355,10 @@ def plot_deviation_histogram(data_samples):
     
     return average_deviations, zero_count, fig
 
+
+#######################
+# Reporting Functions
+#######################
 
 def print_detailed_results(results, total_votes):
     """
@@ -427,6 +443,10 @@ def print_detailed_results(results, total_votes):
         print(f"Budget calculation: {results['addition_statistics']['budget_calculation']}")
 
 
+#######################
+# Main Analysis Function
+#######################
+
 def comprehensive_voting_analysis(data_samples, total_votes, algo_works, budget_percent=None, show_plots=True, print_results=True):
     """
     Performs a comprehensive analysis of voting data by calling all analysis functions in sequence.
@@ -435,7 +455,7 @@ def comprehensive_voting_analysis(data_samples, total_votes, algo_works, budget_
     data_samples (list): A list of dictionaries where each dictionary represents a sample.
     total_votes (int): The total number of votes in the election.
     algo_works (int): The total number of valid algorithm runs.
-    budget (int, optional): The budget for vote additions.
+    budget_percent (float, optional): The budget percentage for vote additions.
     show_plots (bool, optional): Whether to display plots. Defaults to True.
     print_results (bool, optional): Whether to print detailed results. Defaults to True.
     
@@ -450,7 +470,9 @@ def comprehensive_voting_analysis(data_samples, total_votes, algo_works, budget_
         - addition_distribution: Dict containing percentage distribution of addition types
         - deviation_analysis: Dict with average non-zero deviation analysis
     """
-    budget = total_votes*budget_percent*0.01
+    # Calculate budget if budget_percent is provided
+    budget = total_votes * budget_percent * 0.01 if budget_percent is not None else None
+    
     # Step 1: Analyze voting combinations
     winning_combinations, additional_votes, vote_additions = analyze_voting_combinations(data_samples)
     
