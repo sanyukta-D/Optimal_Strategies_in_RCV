@@ -38,7 +38,7 @@ def strict_support(ballot_counts, lower_group, upper_group, candidate):
     return letter_counts.get(candidate, 0)
 
 
-def check_removal(candidates, group, ballot_counts, budget):
+def check_removal(candidates, group, ballot_counts, budget, rigorous_check=True):
     """
     Check if a group of candidates can be removed while retaining other candidates.
     
@@ -47,6 +47,7 @@ def check_removal(candidates, group, ballot_counts, budget):
         group: String of candidates to potentially remove
         ballot_counts: Dictionary of ballots and their counts
         budget: Available budget
+        rigorous_check: Whether to perform the rigorous/advanced check
         
     Returns:
         Boolean indicating if removal is possible
@@ -86,10 +87,14 @@ def check_removal(candidates, group, ballot_counts, budget):
         # Get aggregated votes for relevant candidates
         relevant_aggre_dict = {c: aggre_v_dict[c] for c in candidates}
         worst_c_relevant = min(relevant_aggre_dict, key=relevant_aggre_dict.get)
-        
+        #print(int(relevant_aggre_dict[worst_c_relevant] - strict_support_dict[best_c_irrelevant]), worst_c_relevant, best_c_irrelevant)
         if int(relevant_aggre_dict[worst_c_relevant] - strict_support_dict[best_c_irrelevant]) + 1 >= budget:
             can_remove = True
         else:
+            if not rigorous_check:  # Skip advanced check if disabled
+                return False
+            if len(candidates) < 3:
+                return False
             # Check if addition changes who drops out after worst candidate removal
             last_three = sorted(relevant_aggre_dict.items(), key=itemgetter(1))[:3]
             
@@ -128,7 +133,7 @@ def check_removal(candidates, group, ballot_counts, budget):
     return can_remove
 
 
-def remove_irrelevent(ballot_counts, rt, startcandidates, budget, fullgroup):
+def remove_irrelevent(ballot_counts, rt, startcandidates, budget, fullgroup, rigorous_check=True):
     """
     Remove irrelevant candidates iteratively.
     
@@ -138,6 +143,7 @@ def remove_irrelevent(ballot_counts, rt, startcandidates, budget, fullgroup):
         startcandidates: Initial list of candidates to consider
         budget: Available budget
         fullgroup: Complete set of all candidates
+        rigorous_check: Whether to perform the rigorous/advanced check
         
     Returns:
         Tuple of (remaining candidates, group of removed candidates, stop flag)
@@ -145,15 +151,15 @@ def remove_irrelevent(ballot_counts, rt, startcandidates, budget, fullgroup):
     candidatesnew = startcandidates
     group = ''.join(char for char in fullgroup if char not in candidatesnew)
    
-    while not check_removal(candidatesnew, group, ballot_counts, budget):
+    while not check_removal(candidatesnew, group, ballot_counts, budget, rigorous_check):
         candidatesnew = candidatesnew[:-1]
         group = ''.join(char for char in fullgroup if char not in candidatesnew)
         
-        if len(candidatesnew) <= 2:
+        if len(candidatesnew) < 1:
             stop = False
             return candidatesnew, group, stop
 
-    return candidatesnew, group, check_removal(candidatesnew, group, ballot_counts, budget)
+    return candidatesnew, group, check_removal(candidatesnew, group, ballot_counts, budget, rigorous_check)
 
 
 def predict_wins(ballot_counts, candidates, k, Q, budget):
@@ -190,7 +196,7 @@ def predict_wins(ballot_counts, candidates, k, Q, budget):
 
 def predict_losses(ballot_counts, candidates, k, Q, budget):
     """
-    Predict number of losing candidates.
+    Predict number of losing candidates in a row.
     
     Args:
         ballot_counts: Dictionary of ballots and their counts
@@ -228,9 +234,9 @@ def predict_losses(ballot_counts, candidates, k, Q, budget):
     
     i_L = 1
     if len(T) == 0:
-        return 0
+        return 0, []
     
     while i_L < len(T) and sum(T[:i_L]) + first_choice_votes[0] < Q + budget/(k+1):
         i_L += 1
         
-    return i_L
+    return i_L, C_L

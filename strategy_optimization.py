@@ -5,17 +5,30 @@ from utils import (
     create_structure, 
     give_winners, 
     str_for_given_winners, 
+    str_for_given_winners_losers,
     return_main_sub, 
     main_structures, 
     sub_structures, 
     sub_structures_at_most_k_ones_fixed_last, 
     campaign_addition_dict_simple
 )
-from RCV_optimization_processing import roundupdate, decode_dict, STV_optimal_result
-from STVandIRV_results import STV_optimal_result_simple
-from itertools import combinations
+from RCV_optimization_processing import (
+    roundupdate, 
+    decode_dict,
+    STV_optimal_result)
+from STVandIRV_results import (
+    STV_optimal_result_simple, 
+    create_STV_round_result_given_structure)
+from itertools import combinations, permutations
 import math
+import multiprocessing as mp
+from multiprocessing import Pool
+from functools import partial
 
+
+# Set multiprocessing start method BEFORE your custom imports
+if __name__ == '__main__':
+    mp.set_start_method('fork', force=True)
 
 def add_campaign(log_campaign_list, main_st, remaining_candidates, decoded_dict, Q, k, t, stdt, budget):
     """
@@ -90,7 +103,7 @@ def process_campaign_STV(candidates, main, sub, k, Q, aggre_v_dict, budget):
     for i in range(len(candidates) - 1):
         # Update according to current round of elimination/win
         currentdict = roundupdate(stdt, checked_candidates, remaining_candidates, currentdict)
-        
+
         # Convert into numerical data
         decoded_dict = decode_dict(currentdict, candidates, Q, aggre_v_dict)
 
@@ -111,7 +124,7 @@ def process_campaign_STV(candidates, main, sub, k, Q, aggre_v_dict, budget):
     return DecodedDicts, strt, log_campaign_list, status_list
 
 
-def process_campaign_STV_simple(candidates, main, sub, k, Q, ballot_counts, budget, collections):
+def process_campaign_STV_simple(candidates, main, sub, k, Q, ballot_counts, budget):
     """
     Simplified version of process_campaign_STV that uses pre-calculated ballot counts.
     
@@ -129,7 +142,7 @@ def process_campaign_STV_simple(candidates, main, sub, k, Q, ballot_counts, budg
         Tuple containing (decoded dictionaries, structure, campaign list, status list)
     """
     strt, stdt = create_structure(main, sub)
-    currentdict = {can: [[can]] for can in candidates}
+    ballot_counts_new = deepcopy(ballot_counts)
 
     remaining_candidates = list(stdt.keys())
     checked_candidates = []
@@ -138,29 +151,31 @@ def process_campaign_STV_simple(candidates, main, sub, k, Q, ballot_counts, budg
     log_campaign_list = []
 
     for i in range(len(candidates) - 1):
-        ballot_counts_at_time = collections[i][0]
 
-        full_decoded_dict = get_new_dict(ballot_counts_at_time)
-        decoded_dict = {cand: full_decoded_dict.get(cand, 0) for cand in list(stdt.keys())}
-        
+        # Update according to structre-specified elimination/win
+        ballot_counts_new = create_STV_round_result_given_structure(stdt, checked_candidates, remaining_candidates, ballot_counts_new, Q)
+        aggredict = get_new_dict(ballot_counts_new)
+        currentdict = {can: aggredict[can] for can in remaining_candidates}
+    
         # Perform the next elimination/win
         t = remaining_candidates.pop(0) 
         checked_candidates.append(t)
         
+        
         # Check and calculate required campaign additions
         log_campaign_list, status = add_campaign(
-            log_campaign_list, main, remaining_candidates, decoded_dict, Q, k, t, stdt, budget
+            log_campaign_list, main, remaining_candidates, currentdict, Q, k, t, stdt, budget
         )
         if status == False:
             return {}, [], [], [False]
             
         status_list.append(status)
-        DecodedDicts.append(decoded_dict)
+        DecodedDicts.append(currentdict)
         
     return DecodedDicts, strt, log_campaign_list, status_list
 
 
-def smart_campaign(candidates, log_campaign_list, strt, stdt, Q, DecodedDicts, budget):
+def smart_campaign(candidates, log_campaign_list, strt, stdt, Q, DecodedDicts, budget, allowed_length=None):
     """
     Takes the round-wise requirement dict and returns the optimized investment strategy.
     
@@ -176,11 +191,13 @@ def smart_campaign(candidates, log_campaign_list, strt, stdt, Q, DecodedDicts, b
     Returns:
         Tuple of (investment dictionary, amount spent)
     """
+    if allowed_length is None:
+        allowed_length = len(candidates)
     log = deepcopy(log_campaign_list)
     dict1 = log[0]  # First round allocations
     invest_dict = {can: 0 for can in candidates}  # Current round investments
     total_investment_dict = {can: 0 for can in candidates}  # Total investments
-    
+    amount_spent = 2*budget
     # Available funds from previous investments
     avl_dict = {can: 0 for can in candidates} 
     
@@ -221,7 +238,7 @@ def smart_campaign(candidates, log_campaign_list, strt, stdt, Q, DecodedDicts, b
                 
                 # Check if previously checked candidates can help
                 for rich_can in avl_dict.keys():
-                    if avl_dict[rich_can] > 0:
+                    if avl_dict[rich_can] > 0 and len(rich_can) < allowed_length:
                         rich_can_gives = min(avl_dict[rich_can], needed_extra)
                         avl_dict[rich_can] -= rich_can_gives
                         total_investment_dict[rich_can] -= rich_can_gives
@@ -233,15 +250,17 @@ def smart_campaign(candidates, log_campaign_list, strt, stdt, Q, DecodedDicts, b
                     total_investment_dict[can] += needed_extra
                     
         t = strt[rd + 1][0]
-        amount_spent = sum(total_investment_dict[key] for key in total_investment_dict.keys())
+        if total_investment_dict:
+            amount_spent = sum(total_investment_dict[key] for key in total_investment_dict.keys())
         
-        if amount_spent > budget:
-            return {}, amount_spent
+        if amount_spent > budget+1:
+            return {}, budget*2
                     
     return total_investment_dict, amount_spent
 
 
-def reach_a_structure_check(candidates, main, sub, k, Q_new, ballot_counts, budget):
+
+def reach_a_structure_check(candidates, main, sub, k, Q_new, ballot_counts, budget, allowed_length=None):
     """
     Given main and sub structure specifications, finds optimal investment to reach that structure.
     
@@ -271,7 +290,7 @@ def reach_a_structure_check(candidates, main, sub, k, Q_new, ballot_counts, budg
 
         if all(status_list) == True:  # If campaigning is feasible
             total_investment_dict, amount_check = smart_campaign(
-                candidates, log_campaign_list, strt, stdt, Q_new, DecodedDicts, budget
+                candidates, log_campaign_list, strt, stdt, Q_new, DecodedDicts, budget, allowed_length= allowed_length
             )
             
             # Update ballot counts with new investment
@@ -279,7 +298,7 @@ def reach_a_structure_check(candidates, main, sub, k, Q_new, ballot_counts, budg
                 total_investment_dict, candidates, check_ballot_counts
             )
             
-            if amount_check > budget:
+            if amount_check > budget or not total_investment_dict:
                 return False, {}, 0
         else:
             return False, {}, 0
@@ -287,10 +306,72 @@ def reach_a_structure_check(candidates, main, sub, k, Q_new, ballot_counts, budg
         check_aggre_v_dict = get_new_dict(check_ballot_counts)
         
     # Calculate total amount spent
-    amount_spent = sum(check_aggre_v_dict[candidate] for candidate in candidates) - \
-                   sum(aggre_v_dict[candidate] for candidate in candidates)
+    amount_spent = sum(check_aggre_v_dict.get(candidate, 0) for candidate in candidates) - sum(aggre_v_dict.get(candidate, 0) for candidate in candidates)
     
-    return amount_spent < budget, check_ballot_counts, amount_spent
+    return amount_spent < budget+1, check_ballot_counts, amount_spent
+
+def reach_a_structure_check_memoization(candidates, main, sub, k, Q_new, ballot_counts, budget, failed_partial_orders=None, allowed_length=None):
+    """
+    Given main and sub structure specifications, finds optimal investment to reach that structure.
+    
+    Args:
+        candidates: List of candidate identifiers
+        main: Main structure specification
+        sub: Sub structure specification
+        k: Number of seats
+        Q_new: Updated quota value
+        ballot_counts: Dictionary of ballot counts
+        budget: Available budget
+        collection: Pre-calculated ballot collections
+        failed_partial_orders: Dictionary of already failed partial orders
+        allowed_length: Maximum length of ballot chains to consider (default: None)
+        
+    Returns:
+        Tuple of (success boolean, updated ballot counts, amount spent)
+    """
+    aggre_v_dict = get_new_dict(ballot_counts)
+    check_aggre_v_dict = deepcopy(aggre_v_dict)
+    check_ballot_counts = deepcopy(ballot_counts)
+    strt, stdt = create_structure(main, sub)
+    
+    # First, check if this structure is already known to fail at some level
+    if failed_partial_orders:
+        for i in range(1, len(main)):
+            partial_order = tuple(main[:i])
+            if partial_order in failed_partial_orders:
+                return False, {}, 0, i
+    
+    amount_check = 1
+    while amount_check > 0:
+        DecodedDicts, strt, log_campaign_list, status_list = process_campaign_STV_simple(
+            candidates, main, sub, k, Q_new, check_ballot_counts, budget
+        )
+
+        # If process_campaign_STV fails, identify at which level it failed
+        if status_list and False in status_list:
+            failure_level = status_list.index(False) + 1
+            return False, {}, 0, failure_level
+            
+        if all(status_list) == True:
+            total_investment_dict, amount_check = smart_campaign(
+                candidates, log_campaign_list, strt, stdt, Q_new, DecodedDicts, budget, allowed_length
+            )
+            
+            if amount_check > budget or not total_investment_dict:
+                # This is a budget failure, likely at the last level
+                return False, {}, 0, len(main)
+                
+            check_ballot_counts = campaign_addition_dict_simple(
+                total_investment_dict, candidates, check_ballot_counts
+            )
+        else:
+            return False, {}, 0, len(main)  # Generic failure
+            
+        check_aggre_v_dict = get_new_dict(check_ballot_counts)
+        
+    amount_spent = sum(check_aggre_v_dict.get(candidate, 0) for candidate in candidates) - sum(aggre_v_dict.get(candidate, 0) for candidate in candidates)
+    
+    return amount_spent < budget+1, check_ballot_counts, amount_spent, None  # None indicates success
 
 
 def flip_order_campaign(candidates, k, Q, ballot_counts, budget):
@@ -351,7 +432,7 @@ def flip_order_campaign(candidates, k, Q, ballot_counts, budget):
         return check_aggre_v_dict, Q_new, clean_aggre_dict_diff(diff)
 
 
-def reach_any_winners_campaign(candidates, k, Q, ballot_counts, budget):
+def reach_any_winners_campaign(candidates, k, Q, ballot_counts, budget, c_l =[], zeros = 0, allowed_length=None):
     """
     Finds minimum investment required for each possible combination of winners.
     
@@ -376,16 +457,16 @@ def reach_any_winners_campaign(candidates, k, Q, ballot_counts, budget):
     
     # Try each possible combination of k winners
     for comb in combinations(candidates, k):
-        if set(comb) != set(og_winners):
+        if set(comb) != set(og_winners) and not any(x in c_l for x in set(comb)):
             main_set = str_for_given_winners(comb, candidates)
             
             for current_main in main_set:
                 budget_list_flip = []
                 campaigned_dict_list = []
                 
-                for sub in sub_structures_at_most_k_ones_fixed_last(candidates, k):
+                for sub in sub_structures_at_most_k_ones_fixed_last(candidates, k, zeros):
                     status_final, check_ballot_counts, amount_spent = reach_a_structure_check(
-                        candidates, current_main, sub, k, Q_new, ballot_counts, budget
+                        candidates, current_main, sub, k, Q_new, ballot_counts, budget, allowed_length= allowed_length
                     )
 
                     if status_final == True:
@@ -402,13 +483,19 @@ def reach_any_winners_campaign(candidates, k, Q, ballot_counts, budget):
                     strt_new, stdt_new, collection = STV_optimal_result_simple(
                         candidates, check_ballot_counts, k, Q_new
                     )
+                    
                     new_main, new_sub = return_main_sub(strt_new)
                     
                     # Verify winners
                     if set(give_winners(new_main, k)) != set(comb):
-                        print(set(give_winners(new_main, k)), set(comb))
-                        print(strt_new)
-                        print('error!')
+                        strt_new, stdt_new = STV_optimal_result(
+                        candidates, k, Q_new, check_aggre_v_dict)
+                        new_main, new_sub = return_main_sub(strt_new)
+                        if set(give_winners(new_main, k)) != set(comb):
+                            print(min_budget)
+                            print(set(give_winners(new_main, k)), set(comb))
+                            print('error!')
+    
                         
                     # Calculate vote difference
                     C = {
@@ -423,7 +510,101 @@ def reach_any_winners_campaign(candidates, k, Q, ballot_counts, budget):
     return {x: y for x, y in strats_frame.items() if y[0] >= 0}
 
 
-def reach_any_order_campaign(candidates, k, Q, ballot_counts, budget):
+def reach_any_winners_campaign_memoization(candidates, k, Q, ballot_counts, budget, c_l =[], zeros = 0, allowed_length=None):
+    """
+    Finds minimum investment required for each possible combination of winners.
+    
+    Args:
+        candidates: List of candidate identifiers
+        k: Number of seats
+        Q: Quota value
+        ballot_counts: Dictionary of ballot counts
+        budget: Available budget
+        
+    Returns:
+        Dictionary mapping winner combinations to [budget, additions]
+    """
+    aggre_v_dict = get_new_dict(ballot_counts)
+    strt_og, stdt_og, collection = STV_optimal_result_simple(candidates, ballot_counts, k, Q)
+    original_main, original_sub = return_main_sub(strt_og)
+    Q_new = Q + budget / (k + 1)
+    
+    og_winners = give_winners(original_main, k)
+    strats_frame = {}
+    strats_frame[''.join(og_winners)] = [0, []]
+    
+    # Create a cache to store results of bottom portion checks
+    failed_partial_orders = {}
+
+    # Modified approach
+    for comb in combinations(candidates, k):
+        if set(comb) != set(og_winners) and not any(x in c_l for x in set(comb)):
+            main_set = str_for_given_winners(comb, candidates)
+            
+            for current_main in main_set:
+                # Check if any bottom portion of this order is already known to fail
+                should_skip = False
+                for i in range(1, len(current_main)):
+                    partial_order = tuple(current_main[:i])  # Bottom portion
+                    if partial_order in failed_partial_orders:
+                        should_skip = True
+                        break
+                
+                if should_skip:
+                    continue
+                budget_list_flip = []
+                campaigned_dict_list = []
+                
+                for sub in sub_structures_at_most_k_ones_fixed_last(candidates, k, zeros):
+                    status_final, check_ballot_counts, amount_spent, failed_at = reach_a_structure_check_memoization(
+                    candidates, current_main, sub, k, Q_new, ballot_counts, budget, allowed_length=allowed_length,)
+                
+                    if status_final == True:
+                        campaigned_dict_list.append(check_ballot_counts)
+                        budget_list_flip.append(amount_spent)
+                    else:
+                        # Store the point where this order failed for future reference
+                        failed_partial_orders[tuple(current_main[:failed_at])] = True
+
+                if len(budget_list_flip) > 0:
+                    min_budget = min(budget_list_flip)
+                    min_index = budget_list_flip.index(min_budget)
+
+                    check_ballot_counts = campaigned_dict_list[min_index]
+                    check_aggre_v_dict = get_new_dict(check_ballot_counts)
+                    
+                    strt_new, stdt_new, collection = STV_optimal_result_simple(
+                        candidates, check_ballot_counts, k, Q_new
+                    )
+                    
+                    new_main, new_sub = return_main_sub(strt_new)
+                    
+                    # Verify winners
+                    if set(give_winners(new_main, k)) != set(comb):
+                        strt_new, stdt_new = STV_optimal_result(
+                        candidates, k, Q_new, check_aggre_v_dict)
+                        new_main, new_sub = return_main_sub(strt_new)
+                        if set(give_winners(new_main, k)) != set(comb):
+                            print(min_budget)
+                            print(set(give_winners(new_main, k)), set(comb))
+                            print('error!')
+    
+                        
+                    # Calculate vote difference
+                    C = {
+                        x: check_aggre_v_dict[x] - aggre_v_dict[x] 
+                        for x in check_aggre_v_dict if x in aggre_v_dict
+                    }
+                    diff = {x: y for x, y in C.items() if y > 0}
+                    
+                    if strats_frame.get(''.join(comb), [budget, {}])[0] > min_budget:
+                        strats_frame[''.join(comb)] = [min_budget, clean_aggre_dict_diff(diff)]
+           
+    return {x: y for x, y in strats_frame.items() if y[0] >= 0}
+
+
+
+def reach_any_order_campaign(candidates, k, Q, ballot_counts, budget, zeros= 0):
     """
     Finds minimum investment needed to reach any possible structure.
     
@@ -453,7 +634,7 @@ def reach_any_order_campaign(candidates, k, Q, ballot_counts, budget):
         budget_list_flip = []
         campaigned_dict_list = []
         
-        for sub in sub_structures_at_most_k_ones_fixed_last(candidates, k):
+        for sub in sub_structures_at_most_k_ones_fixed_last(candidates, k, zeros):
             status_final, check_ballot_counts, amount_spent = reach_a_structure_check(
                 candidates, current_main, sub, k, Q_new, ballot_counts, budget
             )
@@ -485,4 +666,208 @@ def reach_any_order_campaign(candidates, k, Q, ballot_counts, budget):
             if strats_frame.get(''.join(new_main), [budget, {}])[0] > min_budget:
                 strats_frame[''.join(new_main)] = [min_budget, clean_aggre_dict_diff(diff)]
            
+    return {x: y for x, y in strats_frame.items() if y[0] >= 0}
+
+
+
+
+def str_for_given_winners_with_position_constraints(winners, candidates, top_k, bottom_m):
+    """
+    Return a list of main structures for given winners with position constraints.
+    
+    Args:
+        winners: List of winning candidates
+        candidates: List of all candidates
+        top_k: List of candidates that cannot appear in the bottom m positions
+        bottom_m: List of candidates that cannot appear in the top k positions
+    """
+    # Check if winners contain any bottom_m candidates (invalid combination)
+    if any(winner in bottom_m for winner in winners):
+        return []
+        
+    losers = [item for item in candidates if item not in winners]
+    potential_sets = []
+    
+    k = len(top_k)  # Number of top positions to constrain
+    m = len(bottom_m)  # Number of bottom positions to constrain
+
+    for perm_w in permutations(winners, len(winners)):
+        # Check if any bottom_m candidates appear in the top k positions
+        # (assuming len(perm_w) >= k, otherwise we just check what we have)
+        top_positions = perm_w[:min(k, len(perm_w))]
+        if any(candidate in bottom_m for candidate in top_positions):
+            continue
+            
+        for perm_l in permutations(losers, len(losers)):
+            # Check if any top_k candidates appear in the last m positions
+            # (assuming len(perm_l) >= m, otherwise we just check what we have)
+            bottom_positions = perm_l[-min(m, len(perm_l)):]
+            if any(candidate in top_k for candidate in bottom_positions):
+                continue
+                
+            potential_sets.append(list(perm_w) + list(perm_l))
+    
+    return potential_sets
+
+
+
+
+def process_combination(comb, candidates, k, Q_new, ballot_counts, budget, og_winners, c_l, zeros, aggre_v_dict, top_k=None, bottom_m=None, allowed_length=None):
+    """Process a single combination in parallel with optional position constraints"""
+    # Skip if combination contains any bottom_m candidates (if constraints are provided)
+    if bottom_m and any(c in bottom_m for c in comb):
+        return None
+        
+    if set(comb) != set(og_winners) and not any(x in c_l for x in set(comb)):
+        # Use different function based on whether constraints are provided
+        if top_k and bottom_m:
+            main_set = str_for_given_winners_with_position_constraints(comb, candidates, top_k, bottom_m)
+        else:
+            main_set = str_for_given_winners(comb, candidates)
+        
+        # If no valid orders, return early
+        if not main_set:
+            return None
+            
+        min_budget = budget + 1
+        best_diff = {}
+        
+        # Local failed_partial_orders for this process only
+        local_failed_orders = {}
+        
+        # Rest of your existing code remains the same
+        for current_main in main_set:
+            # Check local failed orders
+            should_skip = False
+            for i in range(1, len(current_main)):
+                partial_order = tuple(current_main[:i])
+                if partial_order in local_failed_orders:
+                    should_skip = True
+                    break
+            
+            if should_skip:
+                continue
+                
+            budget_list_flip = []
+            campaigned_dict_list = []
+            
+            for sub in sub_structures_at_most_k_ones_fixed_last(candidates, k, zeros):
+                status_final, check_ballot_counts, amount_spent, failed_at = reach_a_structure_check_memoization(
+                    candidates, current_main, sub, k, Q_new, ballot_counts, budget,  
+                    failed_partial_orders=local_failed_orders, allowed_length=allowed_length
+                )
+                
+                if status_final == True:
+                    campaigned_dict_list.append(check_ballot_counts)
+                    budget_list_flip.append(amount_spent)
+                else:
+                    # Store locally
+                    local_failed_orders[tuple(current_main[:failed_at])] = True
+
+            if len(budget_list_flip) > 0:
+                current_min_budget = min(budget_list_flip)
+                min_index = budget_list_flip.index(current_min_budget)
+
+                check_ballot_counts = campaigned_dict_list[min_index]
+                check_aggre_v_dict = get_new_dict(check_ballot_counts)
+                
+                # Verification code as in your original function
+                strt_new, stdt_new, collection = STV_optimal_result_simple(
+                    candidates, check_ballot_counts, k, Q_new
+                )
+                
+                new_main, new_sub = return_main_sub(strt_new)
+                
+                # Verify winners
+                if set(give_winners(new_main, k)) != set(comb):
+                    strt_new, stdt_new = STV_optimal_result(
+                        candidates, k, Q_new, check_aggre_v_dict)
+                    new_main, new_sub = return_main_sub(strt_new)
+                    if set(give_winners(new_main, k)) != set(comb):
+                        print(current_min_budget)
+                        print(set(give_winners(new_main, k)), set(comb))
+                        print('error!')
+                    
+                # Calculate vote difference
+                C = {
+                    x: check_aggre_v_dict[x] - aggre_v_dict[x] 
+                    for x in check_aggre_v_dict if x in aggre_v_dict
+                }
+                diff = {x: y for x, y in C.items() if y > 0}
+                
+                if current_min_budget < min_budget:
+                    min_budget = current_min_budget
+                    best_diff = clean_aggre_dict_diff(diff)
+        
+        if min_budget <= budget:
+            return (''.join(comb), [min_budget, best_diff])
+    
+    return None
+
+def reach_any_winners_campaign_parallel(candidates, k, Q, ballot_counts, budget, c_l=[], zeros=0, top_k=None, bottom_m=None, allowed_length=None):
+    """
+    Parallelized version with optional position constraints
+    
+    Args:
+        candidates: List of all candidates
+        k: Number of winners
+        Q: Quota value
+        ballot_counts: Dictionary of ballot counts
+        budget: Available budget
+        c_l: List of excluded candidates
+        zeros: Parameter for sub-structures
+        top_k: List of candidates that cannot appear in bottom m positions (optional)
+        bottom_m: List of candidates that cannot appear in top k positions (optional)
+        allowed_length: Maximum length of ballot chains to consider (default: None)
+    """
+    if __name__ != '__main__':
+        import multiprocessing
+        multiprocessing.set_start_method('fork', force=True)
+    
+    aggre_v_dict = get_new_dict(ballot_counts)
+    strt_og, stdt_og, collection = STV_optimal_result_simple(candidates, ballot_counts, k, Q)
+    original_main, original_sub = return_main_sub(strt_og)
+    Q_new = Q + budget / (k + 1)
+    
+    og_winners = give_winners(original_main, k)
+    strats_frame = {}
+    strats_frame[''.join(og_winners)] = [0, []]
+    
+    # Generate combinations based on constraints if provided
+    if bottom_m:
+        # Filter combinations that contain bottom_m candidates
+        all_combinations = [comb for comb in combinations(candidates, k) 
+                           if not any(c in bottom_m for c in comb) 
+                           and not any(x in c_l for x in set(comb))]
+    else:
+        # Use all combinations if no constraints
+        all_combinations = list(combinations(candidates, k))
+    
+    # Setup partial function with constraints if provided
+    process_func = partial(
+        process_combination,
+        candidates=candidates,
+        k=k,
+        Q_new=Q_new, 
+        ballot_counts=deepcopy(ballot_counts),
+        budget=budget,
+        og_winners=og_winners,
+        c_l=c_l,
+        zeros=zeros,
+        aggre_v_dict=deepcopy(aggre_v_dict), 
+        top_k=top_k,
+        bottom_m=bottom_m,
+        allowed_length=allowed_length
+    )
+    
+    # Process in parallel
+    with Pool(processes=None) as pool:
+        all_results = pool.map(process_func, all_combinations)
+    
+    # Process results
+    for result in all_results:
+        if result is not None:
+            comb_key, value = result
+            strats_frame[comb_key] = value
+    
     return {x: y for x, y in strats_frame.items() if y[0] >= 0}

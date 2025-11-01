@@ -75,7 +75,8 @@ def analyze_republican_primary(k=1, budget_percent=4.85, keep_at_least=6,
         keep_at_least=bootstrap_keep, 
         iters=bootstrap_iters,
         want_strats=check_strats, 
-        save=False
+        save=False,
+        allowed_length=1
     )
     
     # Comprehensive statistical analysis
@@ -115,7 +116,7 @@ if __name__ == "__main__":
         data_samples=data_samples,
         total_votes=801,
         algo_works=893,
-        budget_percent=5,
+        budget_percent=4.85,
         show_plots=False,
         print_results=True
     )

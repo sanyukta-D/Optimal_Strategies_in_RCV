@@ -1,4 +1,4 @@
-from itertools import permutations, product
+from itertools import permutations, product, combinations
 from copy import deepcopy
 from collections import Counter
 import math
@@ -68,18 +68,40 @@ def sub_structures_specific(candidates, z):
     
     return [prefix + list(ele) + suffix for ele in middle]
 
-def sub_structures_at_most_k_ones_fixed_last(candidates, k):
+def sub_structures_at_most_k_ones_fixed_last(candidates, k, z=0):
     """
     Return all binary sequences of length len(candidates)
     whose last bit is forced to 1 and which have at most k ones.
+    If z is provided, only include sequences where the first z bits are zeros.
+
+    This efficient version generates only the valid free portions of the sequence.
     """
     n = len(candidates)
+    # There are n-1 positions free to choose (last bit is forced to 1)
+    # and the first z of these (or overall) are forced to 0.
+    if z > n - 1:
+        return []  # Not enough positions for forced zeros if z exceeds n-1.
+    if k ==1:
+        return [[0] * (len(candidates)-1)+ [1]]
+
+    free_length = n - 1 - z   # positions available for free selection after z forced zeros
+    # Since the last bit is 1, free positions can contribute at most (k-1) ones.
+    max_free_ones = max(0, k - 1)
+
     results = []
-    # Generate sequences of length n-1, then append 1
-    for bits in product([0, 1], repeat=n-1):
-        # The total number of ones includes the appended 1
-        if sum(bits) + 1 <= k:
-            results.append(list(bits) + [1])
+    # Iterate over possible numbers of ones in the free region from 0 to max_free_ones
+    for ones_count in range(max_free_ones + 1):
+        # If ones_count exceeds the available free positions, skip.
+        if ones_count > free_length:
+            continue
+        # Choose positions within the free region to place ones.
+        for ones_positions in combinations(range(free_length), ones_count):
+            free_bits = [0] * free_length
+            for pos in ones_positions:
+                free_bits[pos] = 1
+            # Build the full sequence: forced zeros at the beginning, then free_bits, then the final 1.
+            sequence = [0] * z + free_bits + [1]
+            results.append(sequence)
     return results
 
 ###########################################

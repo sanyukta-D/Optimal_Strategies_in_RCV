@@ -51,48 +51,50 @@ def analyze_portland_district(district_number, k=3, budget_percent=4.15, keep_at
     # Process ballot counts
     ballot_counts = case_study_helpers.get_ballot_counts_df(candidates_mapping, df)
     candidates = list(candidates_mapping.values())
-    elim_cands = candidates[-15:]
+    elim_cands = candidates[-7:]
     
-    # Analyze main dataset
-    print("Analyzing main dataset...")
-    process_ballot_counts_post_elim(
-        ballot_counts,
-        k, 
-        candidates, 
-        elim_cands, 
-        check_strats=check_strats, 
-        budget_percent=budget_percent, 
-        check_removal_here=check_removal, 
-        keep_at_least=keep_at_least
-    )
-    
+    # # Analyze main dataset
+    # print("Analyzing main dataset...")
+    # process_ballot_counts_post_elim(
+    #     ballot_counts,
+    #     k, 
+    #     candidates, 
+    #     elim_cands, 
+    #     check_strats=check_strats, 
+    #     budget_percent=budget_percent, 
+    #     check_removal_here=check_removal, 
+    #     keep_at_least=keep_at_least, rigorous_check=True
+    # )
     # Analyze bootstrap samples
     print("Analyzing bootstrap samples...")
     algo_works, data_samples = process_bootstrap_samples(
         k, 
         candidates_mapping, 
-        bootstrap_dir, 
+        #bootstrap_dir, 
+        df ,
         bootstrap_files, 
         budget_percent=budget_percent, 
         keep_at_least=keep_at_least, 
         iters=bootstrap_iters,
         want_strats=check_strats, 
-        save=False
+        save=False,
+        spl_check=True,
+        rigorous_check=False
     )
     
     # Comprehensive statistical analysis
-    results = None
-    figure = None
-    if show_plots or print_results:
-        print("Performing comprehensive statistical analysis...")
-        results, figure = comprehensive_voting_analysis(
-            data_samples=data_samples,
-            total_votes=sum(ballot_counts.values()),
-            algo_works=algo_works,
-            budget_percent=budget_percent,
-            show_plots=show_plots,
-            print_results=print_results
-        )
+    # results = None
+    # figure = None
+    # if show_plots or print_results:
+    #     print("Performing comprehensive statistical analysis...")
+    #     results, figure = comprehensive_voting_analysis(
+    #         data_samples=data_samples,
+    #         total_votes=sum(ballot_counts.values()),
+    #         algo_works=algo_works,
+    #         budget_percent=budget_percent,
+    #         show_plots=show_plots,
+    #         print_results=print_results
+    #     )
     
     return results, figure, algo_works, data_samples
 
@@ -115,23 +117,29 @@ def get_bootstrat_analysis_samples():
     return data_samples
 
 if __name__ == "__main__":
-    # Example usage
-    data_samples = get_bootstrat_analysis_samples()
-    comprehensive_voting_analysis(
-        data_samples=data_samples,
-        total_votes=42686,
-        algo_works=84,
-        budget_percent=4,
-        show_plots=False,
-        print_results=True
-    )
-    district_number = 1
-    # results, figure, algo_works, data_samples = analyze_portland_district(
-    #     district_number=district_number,
-    #     k=3,
-    #     budget_percent=4.15,
-    #     keep_at_least=7,
-    #     bootstrap_iters=20,
-    #     show_plots=True,
+    ##### Example usage
+    # data_samples = get_bootstrat_analysis_samples()
+    # print(data_samples)
+    # comprehensive_voting_analysis(
+    #     data_samples=data_samples,
+    #     total_votes=42686,
+    #     algo_works=84,
+    #     budget_percent=4,
+    #     show_plots=False,
     #     print_results=True
     # )
+    district_number = 3
+    results, figure, algo_works, data_samples = analyze_portland_district(
+        district_number=district_number,
+        k=3,
+        budget_percent=3,
+        keep_at_least=20,
+        bootstrap_iters=1,
+        check_strats=True,
+        show_plots=True,
+        print_results=True
+    )
+    print(results, figure, algo_works, data_samples )
+
+    #dis2 : 5.6 vs 6.5 with rigor
+    #dis1 : 4.17 vs 4.7 with rigor
