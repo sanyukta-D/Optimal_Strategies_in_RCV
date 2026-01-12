@@ -1,0 +1,893 @@
+Election: NewYorkCity_06222021_DEMCouncilMember9thCouncilDistrict.csv, Candidate: B
+Gap votes: 88, Votes needed for B: 89
+Total exhausted: 7698, Partially exhausted: 5686
+Expected B>A: 2703.36, Expected A>B: 2982.64
+Expected net for B: -279.28
+Category bootstrap probability: 0.0000
+Limited ranking bootstrap probability: 0.0000
+Unconditional bootstrap probability: 0.0680
+Beta model probability: 0.4409429395044375
+Posterior Beta probability: 0.25561155505412025
+Prior-Posterior Beta probability: 5.1242505794135695e-09
+
+Category breakdown:
+  Category D: 968 ballots
+    Expected B>A: 503.14, A>B: 464.86
+    Net for B: 38.28
+  Category G: 569 ballots
+    Expected B>A: 351.18, A>B: 217.82
+    Net for B: 133.36
+  Category C: 928 ballots
+    Expected B>A: 339.41, A>B: 588.59
+    Net for B: -249.19
+  Category E: 824 ballots
+    Expected B>A: 363.66, A>B: 460.34
+    Net for B: -96.67
+  Category J: 259 ballots
+    Expected B>A: 47.57, A>B: 211.43
+    Net for B: -163.86
+  Category M: 114 ballots
+    Expected B>A: 30.40, A>B: 83.60
+    Net for B: -53.20
+  Category H: 514 ballots
+    Expected B>A: 253.98, A>B: 260.02
+    Net for B: -6.05
+  Category F: 648 ballots
+    Expected B>A: 288.65, A>B: 359.35
+    Net for B: -70.69
+  Category I: 354 ballots
+    Expected B>A: 193.09, A>B: 160.91
+    Net for B: 32.18
+  Category K: 303 ballots
+    Expected B>A: 208.03, A>B: 94.97
+    Net for B: 113.06
+  Category L: 205 ballots
+    Expected B>A: 124.24, A>B: 80.76
+    Net for B: 43.48
+
+---
+
+Election: NewYorkCity_06222021_DEMBoroughPresidentQueens.csv, Candidate: B
+Gap votes: 1002, Votes needed for B: 1003
+Total exhausted: 11740, Partially exhausted: 11740
+Expected B>A: 6692.86, Expected A>B: 5047.14
+Expected net for B: 1645.72
+Category bootstrap probability: 1.0000
+Limited ranking bootstrap probability: 1.0000
+Unconditional bootstrap probability: 0.0000
+Beta model probability: 0.18285233694373193
+Posterior Beta probability: 0.7120233842461239
+Prior-Posterior Beta probability: 0.9999999977455132
+
+Category breakdown:
+  Category C: 11740 ballots
+    Expected B>A: 6692.86, A>B: 5047.14
+    Net for B: 1645.72
+
+---
+
+Election: NewYorkCity_06222021_DEMMayorCitywide.csv, Candidate: B
+Gap votes: 7100, Votes needed for B: 7101
+Total exhausted: 140831, Partially exhausted: 109880
+Expected B>A: 64805.62, Expected A>B: 45074.38
+Expected net for B: 19731.24
+Category bootstrap probability: 1.0000
+Limited ranking bootstrap probability: 1.0000
+Unconditional bootstrap probability: 0.0000
+Beta model probability: 0.2813573786303948
+Posterior Beta probability: 0.9122574923038829
+Prior-Posterior Beta probability: 1.0
+
+Category breakdown:
+  Category F: 7846 ballots
+    Expected B>A: 5291.23, A>B: 2554.77
+    Net for B: 2736.47
+  Category D: 31196 ballots
+    Expected B>A: 16835.52, A>B: 14360.48
+    Net for B: 2475.03
+  Category C: 39200 ballots
+    Expected B>A: 24421.23, A>B: 14778.77
+    Net for B: 9642.46
+  Category E: 12337 ballots
+    Expected B>A: 7571.68, A>B: 4765.32
+    Net for B: 2806.36
+  Category H: 5377 ballots
+    Expected B>A: 2933.20, A>B: 2443.80
+    Net for B: 489.40
+  Category J: 2262 ballots
+    Expected B>A: 1424.53, A>B: 837.47
+    Net for B: 587.05
+  Category G: 5511 ballots
+    Expected B>A: 2811.32, A>B: 2699.68
+    Net for B: 111.65
+  Category M: 842 ballots
+    Expected B>A: 293.07, A>B: 548.93
+    Net for B: -255.86
+  Category K: 1232 ballots
+    Expected B>A: 760.63, A>B: 471.37
+    Net for B: 289.25
+  Category L: 911 ballots
+    Expected B>A: 453.77, A>B: 457.23
+    Net for B: -3.46
+  Category I: 3166 ballots
+    Expected B>A: 2009.44, A>B: 1156.56
+    Net for B: 852.88
+
+---
+
+Election: NewYorkCity_06222021_DEMComptrollerCitywide.csv, Candidate: B
+Gap votes: 25145, Votes needed for B: 25146
+Total exhausted: 210890, Partially exhausted: 186151
+Expected B>A: 91874.84, Expected A>B: 94276.16
+Expected net for B: -2401.33
+Category bootstrap probability: 0.0000
+Limited ranking bootstrap probability: 0.0000
+Unconditional bootstrap probability: 0.0000
+Beta model probability: 0.06882252442506054
+Posterior Beta probability: 0.09029102324640448
+Prior-Posterior Beta probability: 0.0
+
+Category breakdown:
+  Category F: 22212 ballots
+    Expected B>A: 13334.94, A>B: 8877.06
+    Net for B: 4457.87
+  Category I: 14804 ballots
+    Expected B>A: 5953.44, A>B: 8850.56
+    Net for B: -2897.13
+  Category D: 25513 ballots
+    Expected B>A: 13765.70, A>B: 11747.30
+    Net for B: 2018.41
+  Category E: 30708 ballots
+    Expected B>A: 16023.08, A>B: 14684.92
+    Net for B: 1338.17
+  Category C: 54207 ballots
+    Expected B>A: 26021.88, A>B: 28185.12
+    Net for B: -2163.23
+  Category J: 4621 ballots
+    Expected B>A: 1769.93, A>B: 2851.07
+    Net for B: -1081.14
+  Category H: 13325 ballots
+    Expected B>A: 5186.94, A>B: 8138.06
+    Net for B: -2951.13
+  Category G: 20761 ballots
+    Expected B>A: 9818.92, A>B: 10942.08
+    Net for B: -1123.16
+
+---
+
+Election: NewYorkCity_06222021_DEMCouncilMember18thCouncilDistrict.csv, Candidate: B
+Gap votes: 549, Votes needed for B: 550
+Total exhausted: 2503, Partially exhausted: 2333
+Expected B>A: 995.56, Expected A>B: 1337.44
+Expected net for B: -341.89
+Category bootstrap probability: 0.0000
+Limited ranking bootstrap probability: 0.0000
+Unconditional bootstrap probability: 0.0000
+Beta model probability: 0.004535142387129487
+Posterior Beta probability: 0.00010942622985432582
+Prior-Posterior Beta probability: 0.0
+
+Category breakdown:
+  Category C: 510 ballots
+    Expected B>A: 258.62, A>B: 251.38
+    Net for B: 7.24
+  Category G: 239 ballots
+    Expected B>A: 121.21, A>B: 117.79
+    Net for B: 3.41
+  Category E: 600 ballots
+    Expected B>A: 240.88, A>B: 359.12
+    Net for B: -118.25
+  Category F: 316 ballots
+    Expected B>A: 108.11, A>B: 207.89
+    Net for B: -99.79
+  Category H: 48 ballots
+    Expected B>A: 22.91, A>B: 25.09
+    Net for B: -2.18
+  Category D: 620 ballots
+    Expected B>A: 243.84, A>B: 376.16
+    Net for B: -132.33
+
+---
+
+Election: NewYorkCity_06222021_DEMCouncilMember32ndCouncilDistrict.csv, Candidate: B
+Gap votes: 424, Votes needed for B: 425
+Total exhausted: 1265, Partially exhausted: 1225
+Expected B>A: 531.08, Expected A>B: 693.92
+Expected net for B: -162.84
+Category bootstrap probability: 0.0000
+Limited ranking bootstrap probability: 0.0000
+Unconditional bootstrap probability: 0.0000
+Beta model probability: 5.3637389647698264e-05
+Posterior Beta probability: 7.802686740054909e-07
+Prior-Posterior Beta probability: 0.0
+
+Category breakdown:
+  Category E: 271 ballots
+    Expected B>A: 130.14, A>B: 140.86
+    Net for B: -10.72
+  Category D: 316 ballots
+    Expected B>A: 148.12, A>B: 167.88
+    Net for B: -19.75
+  Category C: 554 ballots
+    Expected B>A: 217.81, A>B: 336.19
+    Net for B: -118.38
+  Category F: 84 ballots
+    Expected B>A: 35.00, A>B: 49.00
+    Net for B: -14.00
+
+---
+
+Election: NewYorkCity_06222021_DEMCouncilMember25thCouncilDistrict.csv, Candidate: B
+Gap votes: 803, Votes needed for B: 804
+Total exhausted: 2991, Partially exhausted: 2579
+Expected B>A: 991.81, Expected A>B: 1587.19
+Expected net for B: -595.38
+Category bootstrap probability: 0.0000
+Limited ranking bootstrap probability: 0.0000
+Unconditional bootstrap probability: 0.0000
+Beta model probability: 0.000534779110575867
+Posterior Beta probability: 2.1623263879444465e-07
+Prior-Posterior Beta probability: 0.0
+
+Category breakdown:
+  Category C: 551 ballots
+    Expected B>A: 225.03, A>B: 325.97
+    Net for B: -100.95
+  Category D: 509 ballots
+    Expected B>A: 174.25, A>B: 334.75
+    Net for B: -160.50
+  Category G: 239 ballots
+    Expected B>A: 95.60, A>B: 143.40
+    Net for B: -47.80
+  Category E: 602 ballots
+    Expected B>A: 218.48, A>B: 383.52
+    Net for B: -165.04
+  Category F: 509 ballots
+    Expected B>A: 213.45, A>B: 295.55
+    Net for B: -82.10
+  Category H: 169 ballots
+    Expected B>A: 65.00, A>B: 104.00
+    Net for B: -39.00
+
+---
+
+Election: NewYorkCity_06222021_DEMBoroughPresidentNewYork.csv, Candidate: B
+Gap votes: 14035, Votes needed for B: 14036
+Total exhausted: 50021, Partially exhausted: 47150
+Expected B>A: 21673.60, Expected A>B: 25476.40
+Expected net for B: -3802.80
+Category bootstrap probability: 0.0000
+Limited ranking bootstrap probability: 0.0000
+Unconditional bootstrap probability: 0.0000
+Beta model probability: 0.00027712014597458534
+Posterior Beta probability: 0.0001094359936132383
+Prior-Posterior Beta probability: 0.0
+
+Category breakdown:
+  Category C: 10768 ballots
+    Expected B>A: 4997.94, A>B: 5770.06
+    Net for B: -772.11
+  Category E: 9299 ballots
+    Expected B>A: 5392.25, A>B: 3906.75
+    Net for B: 1485.51
+  Category D: 12393 ballots
+    Expected B>A: 6335.18, A>B: 6057.82
+    Net for B: 277.36
+  Category G: 6083 ballots
+    Expected B>A: 2595.18, A>B: 3487.82
+    Net for B: -892.65
+  Category F: 8607 ballots
+    Expected B>A: 2353.05, A>B: 6253.95
+    Net for B: -3900.91
+
+---
+
+Election: NewYorkCity_06222021_DEMBoroughPresidentBronx.csv, Candidate: B
+Gap votes: 6396, Votes needed for B: 6397
+Total exhausted: 8894, Partially exhausted: 8660
+Expected B>A: 4693.84, Expected A>B: 3966.16
+Expected net for B: 727.68
+Category bootstrap probability: 0.0000
+Limited ranking bootstrap probability: 0.0000
+Unconditional bootstrap probability: 0.0000
+Beta model probability: 0.0
+Posterior Beta probability: 1.3877787807814457e-14
+Prior-Posterior Beta probability: 0.0
+
+Category breakdown:
+  Category D: 3623 ballots
+    Expected B>A: 2109.76, A>B: 1513.24
+    Net for B: 596.53
+  Category C: 4252 ballots
+    Expected B>A: 2137.39, A>B: 2114.61
+    Net for B: 22.78
+  Category E: 785 ballots
+    Expected B>A: 446.69, A>B: 338.31
+    Net for B: 108.38
+
+---
+
+Election: NewYorkCity_06222021_DEMBoroughPresidentKings.csv, Candidate: B
+Gap votes: 19142, Votes needed for B: 19143
+Total exhausted: 92367, Partially exhausted: 76777
+Expected B>A: 36233.03, Expected A>B: 40543.97
+Expected net for B: -4310.93
+Category bootstrap probability: 0.0000
+Limited ranking bootstrap probability: 0.0000
+Unconditional bootstrap probability: 0.0000
+Beta model probability: 0.002924928799349358
+Posterior Beta probability: 0.00413526739242609
+Prior-Posterior Beta probability: 0.0
+
+Category breakdown:
+  Category C: 27786 ballots
+    Expected B>A: 11878.12, A>B: 15907.88
+    Net for B: -4029.76
+  Category F: 6797 ballots
+    Expected B>A: 2810.44, A>B: 3986.56
+    Net for B: -1176.13
+  Category G: 4369 ballots
+    Expected B>A: 1360.21, A>B: 3008.79
+    Net for B: -1648.59
+  Category D: 12607 ballots
+    Expected B>A: 8683.89, A>B: 3923.11
+    Net for B: 4760.78
+  Category H: 4498 ballots
+    Expected B>A: 1919.41, A>B: 2578.59
+    Net for B: -659.19
+  Category E: 9127 ballots
+    Expected B>A: 3713.38, A>B: 5413.62
+    Net for B: -1700.24
+  Category J: 3649 ballots
+    Expected B>A: 1813.98, A>B: 1835.02
+    Net for B: -21.03
+  Category L: 2091 ballots
+    Expected B>A: 779.37, A>B: 1311.63
+    Net for B: -532.25
+  Category I: 3870 ballots
+    Expected B>A: 2301.88, A>B: 1568.12
+    Net for B: 733.76
+  Category K: 1983 ballots
+    Expected B>A: 972.36, A>B: 1010.64
+    Net for B: -38.28
+
+---
+
+Election: NewYorkCity_06222021_DEMCouncilMember35thCouncilDistrict.csv, Candidate: B
+Gap votes: 2424, Votes needed for B: 2425
+Total exhausted: 4178, Partially exhausted: 3923
+Expected B>A: 1914.10, Expected A>B: 2008.90
+Expected net for B: -94.80
+Category bootstrap probability: 0.0000
+Limited ranking bootstrap probability: 0.0000
+Unconditional bootstrap probability: 0.0000
+Beta model probability: 5.822009541134321e-13
+Posterior Beta probability: 1.56988866351071e-11
+Prior-Posterior Beta probability: 0.0
+
+Category breakdown:
+  Category F: 563 ballots
+    Expected B>A: 327.28, A>B: 235.72
+    Net for B: 91.56
+  Category C: 1724 ballots
+    Expected B>A: 790.58, A>B: 933.42
+    Net for B: -142.84
+  Category D: 741 ballots
+    Expected B>A: 300.50, A>B: 440.50
+    Net for B: -140.00
+  Category E: 662 ballots
+    Expected B>A: 393.81, A>B: 268.19
+    Net for B: 125.61
+  Category G: 233 ballots
+    Expected B>A: 101.94, A>B: 131.06
+    Net for B: -29.12
+
+---
+
+Election: NewYorkCity_06222021_DEMCouncilMember23rdCouncilDistrict.csv, Candidate: B
+Gap votes: 1172, Votes needed for B: 1173
+Total exhausted: 3329, Partially exhausted: 3221
+Expected B>A: 1713.50, Expected A>B: 1507.50
+Expected net for B: 206.00
+Category bootstrap probability: 0.0000
+Limited ranking bootstrap probability: 0.0000
+Unconditional bootstrap probability: 0.0000
+Beta model probability: 6.780843045839369e-06
+Posterior Beta probability: 0.001493594074235327
+Prior-Posterior Beta probability: 0.0
+
+Category breakdown:
+  Category C: 909 ballots
+    Expected B>A: 391.27, A>B: 517.73
+    Net for B: -126.47
+  Category D: 932 ballots
+    Expected B>A: 318.37, A>B: 613.63
+    Net for B: -295.26
+  Category E: 821 ballots
+    Expected B>A: 592.81, A>B: 228.19
+    Net for B: 364.63
+  Category F: 344 ballots
+    Expected B>A: 230.73, A>B: 113.27
+    Net for B: 117.46
+  Category G: 215 ballots
+    Expected B>A: 180.32, A>B: 34.68
+    Net for B: 145.65
+
+---
+
+Election: NewYorkCity_06222021_DEMCouncilMember20thCouncilDistrict.csv, Candidate: B
+Gap votes: 802, Votes needed for B: 803
+Total exhausted: 3018, Partially exhausted: 2920
+Expected B>A: 1503.68, Expected A>B: 1416.32
+Expected net for B: 87.35
+Category bootstrap probability: 0.0000
+Limited ranking bootstrap probability: 0.0000
+Unconditional bootstrap probability: 0.0000
+Beta model probability: 0.0002701997866411121
+Posterior Beta probability: 0.008187083000772866
+Prior-Posterior Beta probability: 0.0
+
+Category breakdown:
+  Category F: 514 ballots
+    Expected B>A: 280.59, A>B: 233.41
+    Net for B: 47.18
+  Category G: 598 ballots
+    Expected B>A: 317.06, A>B: 280.94
+    Net for B: 36.12
+  Category H: 16 ballots
+    Expected B>A: 10.18, A>B: 5.82
+    Net for B: 4.36
+  Category D: 589 ballots
+    Expected B>A: 216.88, A>B: 372.12
+    Net for B: -155.24
+  Category E: 670 ballots
+    Expected B>A: 390.10, A>B: 279.90
+    Net for B: 110.21
+  Category C: 533 ballots
+    Expected B>A: 288.86, A>B: 244.14
+    Net for B: 44.72
+
+---
+
+Election: NewYorkCity_06222021_DEMCouncilMember19thCouncilDistrict.csv, Candidate: B
+Gap votes: 1100, Votes needed for B: 1101
+Total exhausted: 1306, Partially exhausted: 1284
+Expected B>A: 688.08, Expected A>B: 595.92
+Expected net for B: 92.15
+Category bootstrap probability: 0.0000
+Limited ranking bootstrap probability: 0.0000
+Unconditional bootstrap probability: 0.0000
+Beta model probability: 0.0
+Posterior Beta probability: 0.0
+Prior-Posterior Beta probability: 0.0
+
+Category breakdown:
+  Category E: 124 ballots
+    Expected B>A: 74.40, A>B: 49.60
+    Net for B: 24.80
+  Category D: 297 ballots
+    Expected B>A: 160.21, A>B: 136.79
+    Net for B: 23.42
+  Category C: 801 ballots
+    Expected B>A: 421.78, A>B: 379.22
+    Net for B: 42.55
+  Category F: 62 ballots
+    Expected B>A: 31.69, A>B: 30.31
+    Net for B: 1.38
+
+---
+
+Election: NewYorkCity_06222021_DEMCouncilMember5thCouncilDistrict.csv, Candidate: B
+Gap votes: 2600, Votes needed for B: 2601
+Total exhausted: 3816, Partially exhausted: 3700
+Expected B>A: 1581.72, Expected A>B: 2118.28
+Expected net for B: -536.56
+Category bootstrap probability: 0.0000
+Limited ranking bootstrap probability: 0.0000
+Unconditional bootstrap probability: 0.0000
+Beta model probability: 0.0
+Posterior Beta probability: 0.0
+Prior-Posterior Beta probability: 0.0
+
+Category breakdown:
+  Category C: 1035 ballots
+    Expected B>A: 409.28, A>B: 625.72
+    Net for B: -216.43
+  Category D: 817 ballots
+    Expected B>A: 343.02, A>B: 473.98
+    Net for B: -130.97
+  Category F: 646 ballots
+    Expected B>A: 257.28, A>B: 388.72
+    Net for B: -131.44
+  Category E: 945 ballots
+    Expected B>A: 460.55, A>B: 484.45
+    Net for B: -23.90
+  Category G: 257 ballots
+    Expected B>A: 111.59, A>B: 145.41
+    Net for B: -33.82
+
+---
+
+Election: NewYorkCity_06222021_DEMCouncilMember49thCouncilDistrict.csv, Candidate: B
+Gap votes: 1472, Votes needed for B: 1473
+Total exhausted: 3184, Partially exhausted: 2789
+Expected B>A: 1227.84, Expected A>B: 1561.16
+Expected net for B: -333.32
+Category bootstrap probability: 0.0000
+Limited ranking bootstrap probability: 0.0000
+Unconditional bootstrap probability: 0.0000
+Beta model probability: 1.0531371330557704e-09
+Posterior Beta probability: 4.398464925614576e-10
+Prior-Posterior Beta probability: 0.0
+
+Category breakdown:
+  Category F: 452 ballots
+    Expected B>A: 186.26, A>B: 265.74
+    Net for B: -79.47
+  Category E: 413 ballots
+    Expected B>A: 174.83, A>B: 238.17
+    Net for B: -63.34
+  Category G: 364 ballots
+    Expected B>A: 160.07, A>B: 203.93
+    Net for B: -43.86
+  Category D: 576 ballots
+    Expected B>A: 220.86, A>B: 355.14
+    Net for B: -134.28
+  Category H: 337 ballots
+    Expected B>A: 175.65, A>B: 161.35
+    Net for B: 14.30
+  Category C: 495 ballots
+    Expected B>A: 254.90, A>B: 240.10
+    Net for B: 14.79
+  Category I: 152 ballots
+    Expected B>A: 55.27, A>B: 96.73
+    Net for B: -41.45
+
+---
+
+Election: NewYorkCity_06222021_DEMCouncilMember39thCouncilDistrict.csv, Candidate: B
+Gap votes: 3924, Votes needed for B: 3925
+Total exhausted: 8005, Partially exhausted: 7796
+Expected B>A: 3754.45, Expected A>B: 4041.55
+Expected net for B: -287.09
+Category bootstrap probability: 0.0000
+Limited ranking bootstrap probability: 0.0000
+Unconditional bootstrap probability: 0.0000
+Beta model probability: 1.112164804695226e-10
+Posterior Beta probability: 1.0001391048675146e-08
+Prior-Posterior Beta probability: 0.0
+
+Category breakdown:
+  Category C: 2299 ballots
+    Expected B>A: 1067.58, A>B: 1231.42
+    Net for B: -163.84
+  Category G: 580 ballots
+    Expected B>A: 251.87, A>B: 328.13
+    Net for B: -76.25
+  Category D: 2876 ballots
+    Expected B>A: 1562.87, A>B: 1313.13
+    Net for B: 249.74
+  Category E: 1312 ballots
+    Expected B>A: 611.78, A>B: 700.22
+    Net for B: -88.45
+  Category F: 729 ballots
+    Expected B>A: 260.36, A>B: 468.64
+    Net for B: -208.29
+
+---
+
+Election: NewYorkCity_06222021_DEMCouncilMember25thCouncilDistrict.csv, Candidate: C
+Gap votes: 1757, Votes needed for B: 1758
+Total exhausted: 2991, Partially exhausted: 2579
+Expected B>A: 991.81, Expected A>B: 1587.19
+Expected net for B: -595.38
+Category bootstrap probability: 0.0000
+Limited ranking bootstrap probability: 0.0000
+Unconditional bootstrap probability: 0.0000
+Beta model probability: 0.0
+Posterior Beta probability: 0.0
+Prior-Posterior Beta probability: 0.0
+
+Category breakdown:
+  Category C: 551 ballots
+    Expected B>A: 225.03, A>B: 325.97
+    Net for B: -100.95
+  Category D: 509 ballots
+    Expected B>A: 174.25, A>B: 334.75
+    Net for B: -160.50
+  Category G: 239 ballots
+    Expected B>A: 95.60, A>B: 143.40
+    Net for B: -47.80
+  Category E: 602 ballots
+    Expected B>A: 218.48, A>B: 383.52
+    Net for B: -165.04
+  Category F: 509 ballots
+    Expected B>A: 213.45, A>B: 295.55
+    Net for B: -82.10
+  Category H: 169 ballots
+    Expected B>A: 65.00, A>B: 104.00
+    Net for B: -39.00
+
+---
+
+Election: NewYorkCity_06222021_DEMCouncilMember36thCouncilDistrict.csv, Candidate: B
+Gap votes: 2752, Votes needed for B: 2753
+Total exhausted: 3654, Partially exhausted: 3542
+Expected B>A: 2034.67, Expected A>B: 1507.33
+Expected net for B: 527.33
+Category bootstrap probability: 0.0000
+Limited ranking bootstrap probability: 0.0000
+Unconditional bootstrap probability: 0.0000
+Beta model probability: 0.0
+Posterior Beta probability: 3.319566843629218e-14
+Prior-Posterior Beta probability: 0.0
+
+Category breakdown:
+  Category C: 1897 ballots
+    Expected B>A: 960.25, A>B: 936.75
+    Net for B: 23.50
+  Category D: 1377 ballots
+    Expected B>A: 910.36, A>B: 466.64
+    Net for B: 443.73
+  Category E: 268 ballots
+    Expected B>A: 164.06, A>B: 103.94
+    Net for B: 60.11
+
+---
+
+Election: NewYorkCity_06222021_DEMBoroughPresidentKings.csv, Candidate: C
+Gap votes: 34893, Votes needed for B: 34894
+Total exhausted: 92367, Partially exhausted: 76777
+Expected B>A: 36233.03, Expected A>B: 40543.97
+Expected net for B: -4310.93
+Category bootstrap probability: 0.0000
+Limited ranking bootstrap probability: 0.0000
+Unconditional bootstrap probability: 0.0000
+Beta model probability: 0.0
+Posterior Beta probability: 0.0
+Prior-Posterior Beta probability: 0.0
+
+Category breakdown:
+  Category C: 27786 ballots
+    Expected B>A: 11878.12, A>B: 15907.88
+    Net for B: -4029.76
+  Category F: 6797 ballots
+    Expected B>A: 2810.44, A>B: 3986.56
+    Net for B: -1176.13
+  Category G: 4369 ballots
+    Expected B>A: 1360.21, A>B: 3008.79
+    Net for B: -1648.59
+  Category D: 12607 ballots
+    Expected B>A: 8683.89, A>B: 3923.11
+    Net for B: 4760.78
+  Category H: 4498 ballots
+    Expected B>A: 1919.41, A>B: 2578.59
+    Net for B: -659.19
+  Category E: 9127 ballots
+    Expected B>A: 3713.38, A>B: 5413.62
+    Net for B: -1700.24
+  Category J: 3649 ballots
+    Expected B>A: 1813.98, A>B: 1835.02
+    Net for B: -21.03
+  Category L: 2091 ballots
+    Expected B>A: 779.37, A>B: 1311.63
+    Net for B: -532.25
+  Category I: 3870 ballots
+    Expected B>A: 2301.88, A>B: 1568.12
+    Net for B: 733.76
+  Category K: 1983 ballots
+    Expected B>A: 972.36, A>B: 1010.64
+    Net for B: -38.28
+
+---
+
+Election: NewYorkCity_06222021_DEMCouncilMember48thCouncilDistrict.csv, Candidate: B
+Gap votes: 1125, Votes needed for B: 1126
+Total exhausted: 1210, Partially exhausted: 1173
+Expected B>A: 461.18, Expected A>B: 711.82
+Expected net for B: -250.65
+Category bootstrap probability: 0.0000
+Limited ranking bootstrap probability: 0.0000
+Unconditional bootstrap probability: 0.0000
+Beta model probability: 0.0
+Posterior Beta probability: 0.0
+Prior-Posterior Beta probability: 0.0
+
+Category breakdown:
+  Category C: 559 ballots
+    Expected B>A: 242.72, A>B: 316.28
+    Net for B: -73.55
+  Category D: 438 ballots
+    Expected B>A: 150.28, A>B: 287.72
+    Net for B: -137.43
+  Category E: 176 ballots
+    Expected B>A: 68.17, A>B: 107.83
+    Net for B: -39.66
+
+---
+
+Election: NewYorkCity_06222021_DEMCouncilMember40thCouncilDistrict.csv, Candidate: C
+Gap votes: 2995, Votes needed for B: 2996
+Total exhausted: 5433, Partially exhausted: 4641
+Expected B>A: 1860.85, Expected A>B: 2780.15
+Expected net for B: -919.29
+Category bootstrap probability: 0.0000
+Limited ranking bootstrap probability: 0.0000
+Unconditional bootstrap probability: 0.0000
+Beta model probability: 0.0
+Posterior Beta probability: 0.0
+Prior-Posterior Beta probability: 0.0
+
+Category breakdown:
+  Category C: 1351 ballots
+    Expected B>A: 390.55, A>B: 960.45
+    Net for B: -569.90
+  Category F: 490 ballots
+    Expected B>A: 251.71, A>B: 238.29
+    Net for B: 13.42
+  Category D: 639 ballots
+    Expected B>A: 284.00, A>B: 355.00
+    Net for B: -71.00
+  Category J: 165 ballots
+    Expected B>A: 69.07, A>B: 95.93
+    Net for B: -26.86
+  Category E: 745 ballots
+    Expected B>A: 288.16, A>B: 456.84
+    Net for B: -168.68
+  Category I: 322 ballots
+    Expected B>A: 156.12, A>B: 165.88
+    Net for B: -9.76
+  Category G: 534 ballots
+    Expected B>A: 318.81, A>B: 215.19
+    Net for B: 103.61
+  Category K: 132 ballots
+    Expected B>A: 30.94, A>B: 101.06
+    Net for B: -70.12
+  Category H: 263 ballots
+    Expected B>A: 71.50, A>B: 191.50
+    Net for B: -120.01
+
+---
+
+Election: NewYorkCity_06222021_DEMCouncilMember29thCouncilDistrict.csv, Candidate: B
+Gap votes: 2413, Votes needed for B: 2414
+Total exhausted: 5051, Partially exhausted: 4485
+Expected B>A: 2047.55, Expected A>B: 2437.45
+Expected net for B: -389.91
+Category bootstrap probability: 0.0000
+Limited ranking bootstrap probability: 0.0000
+Unconditional bootstrap probability: 0.0000
+Beta model probability: 3.6019520699426266e-11
+Posterior Beta probability: 1.34409350316389e-09
+Prior-Posterior Beta probability: 0.0
+
+Category breakdown:
+  Category E: 828 ballots
+    Expected B>A: 401.06, A>B: 426.94
+    Net for B: -25.88
+  Category C: 1150 ballots
+    Expected B>A: 497.18, A>B: 652.82
+    Net for B: -155.64
+  Category D: 953 ballots
+    Expected B>A: 449.53, A>B: 503.47
+    Net for B: -53.94
+  Category F: 678 ballots
+    Expected B>A: 283.53, A>B: 394.47
+    Net for B: -110.95
+  Category G: 473 ballots
+    Expected B>A: 173.43, A>B: 299.57
+    Net for B: -126.13
+  Category H: 249 ballots
+    Expected B>A: 148.91, A>B: 100.09
+    Net for B: 48.82
+  Category I: 154 ballots
+    Expected B>A: 93.90, A>B: 60.10
+    Net for B: 33.80
+
+---
+
+Election: NewYorkCity_06222021_DEMCouncilMember20thCouncilDistrict.csv, Candidate: C
+Gap votes: 1746, Votes needed for B: 1747
+Total exhausted: 3018, Partially exhausted: 2920
+Expected B>A: 1503.68, Expected A>B: 1416.32
+Expected net for B: 87.35
+Category bootstrap probability: 0.0000
+Limited ranking bootstrap probability: 0.0000
+Unconditional bootstrap probability: 0.0000
+Beta model probability: 0.0
+Posterior Beta probability: 0.0
+Prior-Posterior Beta probability: 0.0
+
+Category breakdown:
+  Category F: 514 ballots
+    Expected B>A: 280.59, A>B: 233.41
+    Net for B: 47.18
+  Category G: 598 ballots
+    Expected B>A: 317.06, A>B: 280.94
+    Net for B: 36.12
+  Category H: 16 ballots
+    Expected B>A: 10.18, A>B: 5.82
+    Net for B: 4.36
+  Category D: 589 ballots
+    Expected B>A: 216.88, A>B: 372.12
+    Net for B: -155.24
+  Category E: 670 ballots
+    Expected B>A: 390.10, A>B: 279.90
+    Net for B: 110.21
+  Category C: 533 ballots
+    Expected B>A: 288.86, A>B: 244.14
+    Net for B: 44.72
+
+---
+
+Election: NewYorkCity_06222021_DEMCouncilMember1stCouncilDistrict.csv, Candidate: B
+Gap votes: 3727, Votes needed for B: 3728
+Total exhausted: 3982, Partially exhausted: 3702
+Expected B>A: 1919.74, Expected A>B: 1782.26
+Expected net for B: 137.47
+Category bootstrap probability: 0.0000
+Limited ranking bootstrap probability: 0.0000
+Unconditional bootstrap probability: 0.0000
+Beta model probability: 0.0
+Posterior Beta probability: 0.0
+Prior-Posterior Beta probability: 0.0
+
+Category breakdown:
+  Category E: 651 ballots
+    Expected B>A: 420.21, A>B: 230.79
+    Net for B: 189.42
+  Category C: 1155 ballots
+    Expected B>A: 634.88, A>B: 520.12
+    Net for B: 114.75
+  Category F: 468 ballots
+    Expected B>A: 205.08, A>B: 262.92
+    Net for B: -57.84
+  Category D: 922 ballots
+    Expected B>A: 435.39, A>B: 486.61
+    Net for B: -51.22
+  Category H: 127 ballots
+    Expected B>A: 58.35, A>B: 68.65
+    Net for B: -10.30
+  Category G: 273 ballots
+    Expected B>A: 122.18, A>B: 150.82
+    Net for B: -28.64
+  Category I: 106 ballots
+    Expected B>A: 43.65, A>B: 62.35
+    Net for B: -18.71
+
+---
+
+Election: NewYorkCity_06222021_DEMCouncilMember46thCouncilDistrict.csv, Candidate: B
+Gap votes: 3850, Votes needed for B: 3851
+Total exhausted: 4412, Partially exhausted: 4152
+Expected B>A: 2120.82, Expected A>B: 2031.18
+Expected net for B: 89.63
+Category bootstrap probability: 0.0000
+Limited ranking bootstrap probability: 0.0000
+Unconditional bootstrap probability: 0.0000
+Beta model probability: 0.0
+Posterior Beta probability: 0.0
+Prior-Posterior Beta probability: 0.0
+
+Category breakdown:
+  Category D: 1530 ballots
+    Expected B>A: 918.00, A>B: 612.00
+    Net for B: 306.00
+  Category C: 1085 ballots
+    Expected B>A: 391.81, A>B: 693.19
+    Net for B: -301.39
+  Category E: 639 ballots
+    Expected B>A: 351.96, A>B: 287.04
+    Net for B: 64.93
+  Category G: 217 ballots
+    Expected B>A: 100.69, A>B: 116.31
+    Net for B: -15.62
+  Category H: 139 ballots
+    Expected B>A: 50.93, A>B: 88.07
+    Net for B: -37.14
+  Category F: 542 ballots
+    Expected B>A: 307.43, A>B: 234.57
+    Net for B: 72.86
+
+---
+

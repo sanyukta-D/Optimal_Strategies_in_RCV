@@ -12,9 +12,9 @@ from string import ascii_uppercase
 
 
 ### NEW YORK CITY RCV elections case study ####
-input_file = "Alaska_11052024_President.csv"
-full_path = os.path.join("Case_Studies/Alaska_RCV/alaska_files", input_file)
-
+input_file = "NewYorkCity_06222021_DEMCouncilMember23rdCouncilDistrict.csv"
+full_path = os.path.join("Case_Studies/NewYork_City_RCV/nyc_files", input_file)
+k = 1
 df, processed_file = process_single_file(full_path)
 
 candidates_mapping = create_candidate_mapping(processed_file)
@@ -33,12 +33,12 @@ final_mapping = {candidate: ascii_uppercase[i] for i, candidate in enumerate(ord
 ballot_counts = case_study_helpers.get_ballot_counts_df(final_mapping, df)
 candidates = list(final_mapping.values())
 
-k = 1
+
 candidates = list(candidates_mapping.values())
 print("Number of candidates: ", len(candidates))
 rt, dt, collection = STV_optimal_result_simple(candidates, ballot_counts, k, sum(ballot_counts.values())/(k+1))
 results, subresults = utils.return_main_sub(rt)
-elim_cands = results[-2:]
+elim_cands = results[-3:]
 zeros , c_l = candidate_removal.predict_losses(ballot_counts, candidates, k, 11608, 1160)
 
 # exhausted_ballots_list, exhausted_ballots_dict = IRV_ballot_exhaust(candidates, ballot_counts)
@@ -52,10 +52,10 @@ process_ballot_counts_post_elim(ballot_counts,
             k,
             results,
             elim_cands,
-            check_strats=False,
+            check_strats=True,
             budget_percent=40,
             check_removal_here=True,
-            keep_at_least=10, zeros= 0, rigorous_check=False
+            keep_at_least=10, zeros= 0, rigorous_check=True
         )
 
 # print(candidate_removal.predict_losses(ballot_counts, candidates, k, 11608, 1160))
