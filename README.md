@@ -1,14 +1,78 @@
-# Optimal_Strategies_in_RCV
-This repository contains codes that can be used to find optimal vote-addition strategies in ranked-choice voting (RCV). 
+# Optimal Strategies in Ranked Choice Voting
 
-We develop a computational framework to find optimal vote-addition strategies for each candidate -- if we want a candidate to place in the top $k$ of the election, what is the optimal (requiring the minimum number of additional ranked ballots) vote addition strategy? Our algorithmic framework is as follows (and as detailed in our paper), given $n$ candidates and $m$ unique voter ballots.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
-(1) Each set of ballots induces a structure, referring to the outcome order (main-structure) and the round-specific elimination or winning order (sub-structure). Of course, given an initial set of votes, one can reach any alternative structure by adding enough votes.  Given a budget of $B$ additional votes, we first develop an algorithm to optimally (if possible) reach a given structure in $O(mn)$ time. Then, a binary search on the budget $B$ yields the optimal strategy to efficiently reach a given structure. 
+A computational framework for finding optimal vote-addition strategies in ranked-choice voting (RCV) elections.
 
-However, with many candidates, there are a prohibitively large number of structures: there are $n!$ possible orders (main structures), of which the candidate would be in the top $k$ in $k \times (n - 1)!$ main structures. Each main structure has $2^{n-1}$ sub-structures. Naively, then, finding an optimal strategy requires finding the minimum vote additions over $k \times (n - 1)! \times 2^{n-1}$ structures.  
+## Overview
 
-(2) Thus, we develop multiple approaches to reduce the election size, without affecting the optimality of the calculated strategies. (a) Given a budget of $B$ additional votes and status quo vote data, we next give an algorithm with $O(mn^4)$ complexity that removes a set of irrelevant candidates who will be eliminated first regardless of how the $B$ votes are added. (b) We show that for any set of $k$ winners, there are only $\sum_{j=1}^{k}$ $\mathcal{C}^n_k$ feasible substructures. Then, we show how to reduce the number of substructures further given status quo vote data. We give an algorithm with $O(mn^2)$ complexity that reduces the number of feasible sub-structures that can lead to an optimal win. 
+This repository accompanies the paper:
 
-This repository contains preliminary codes, functions to reach any desired structure of a set of winners, to find allocation to flip a social choice order, etc. As given above, it also contains codes that are used to trim down the election instance.
+> **Strategic Interactions in Modern Elections and Markets**
+> Sanyukta Deshpande and Sheldon H. Jacobson
+> University of Illinois at Urbana-Champaign
 
-Finally, it contains codes that perform our case study analyses. This includes the strategies of leading candidates, both under perfect information and bootstrap data. 
+We develop algorithms to:
+1. Find optimal vote-addition strategies for any candidate to place in the top k
+2. Trim irrelevant candidates under budget uncertainty in O(mn^4) time
+3. Reduce feasible sub-structures in O(mn^2) time
+
+## Installation
+
+```bash
+git clone https://github.com/sanyukta-D/Optimal_Strategies_in_RCV.git
+cd Optimal_Strategies_in_RCV
+pip install -r requirements.txt
+```
+
+## Repository Structure
+
+```
+├── rcv_strategies/      # Core algorithms
+│   ├── core/            # Optimization and strategy computation
+│   ├── utils/           # Helper functions
+│   └── analysis/        # Analysis tools (heatmaps, probability tables)
+├── case_studies/        # Empirical analyses (Alaska, NYC, Portland)
+├── notebooks/           # Interactive tutorials
+├── scripts/             # Reproduction scripts
+└── results/             # Generated outputs (not tracked)
+```
+
+## Usage
+
+```python
+from rcv_strategies.core import optimization, strategy
+
+# See notebooks/tutorial.ipynb for detailed examples
+```
+
+## Reproducing Results
+
+```bash
+python scripts/run_main.py
+python scripts/run_portland.py
+```
+
+## Case Studies
+
+We validate our framework on 110+ real-world RCV elections across:
+- Alaska (statewide elections)
+- New York City (municipal elections)
+- Portland (city council elections)
+
+## Citation
+
+```bibtex
+@phdthesis{deshpande2025strategic,
+  title={Strategic Interactions in Modern Elections and Markets},
+  author={Deshpande, Sanyukta},
+  year={2025},
+  school={University of Illinois at Urbana-Champaign},
+  advisor={Jacobson, Sheldon H.}
+}
+```
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.

@@ -7,11 +7,11 @@ import seaborn as sns
 from scipy import stats
 import ast
 import os
-from Case_Studies.NewYork_City_RCV.convert_data import process_single_file, create_candidate_mapping
-import case_study_helpers
+from case_studies.NewYork_City_RCV.convert_data import process_single_file, create_candidate_mapping
+from rcv_strategies.utils import case_study_helpers
 from string import ascii_uppercase
-from STVandIRV_results import STV_optimal_result_simple
-import utils
+from rcv_strategies.core.stv_irv import STV_optimal_result_simple
+from rcv_strategies.utils import helpers as utils
 import math
 
 def extract_strategy_dict(strategy_str):

@@ -2,12 +2,12 @@ import os
 import json
 import sys
 
-from case_study_helpers import process_bootstrap_samples, get_ballot_counts_df
-from case_study_analysis_tools import (
+from rcv_strategies.utils.case_study_helpers import process_bootstrap_samples, get_ballot_counts_df
+from rcv_strategies.analysis.tools import (
     comprehensive_voting_analysis,
     analyze_detailed_vote_additions
 )
-from Case_Studies.Portland_City_Council_Data_and_Analysis.load_district_data import district_data
+from case_studies.Portland_City_Council_Data_and_Analysis.load_district_data import district_data
 
 def find_true_multi_layer_files(final_dir, json_list):
     bad = []
