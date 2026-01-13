@@ -30,3 +30,8 @@ ENV/
 
 # Generated outputs
 results/
+cleaned_files/
+primary_final_results/
+
+# Claude Code
+.claude/
