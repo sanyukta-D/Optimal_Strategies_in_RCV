@@ -1,7 +1,7 @@
 import pandas as pd
 import os
 from rcv_strategies.core.stv_irv import STV_ballot_exhaust, STV_optimal_result_simple
-from case_studies.Portland_City_Council_Data_and_Analysis.load_district_data import district_data
+from case_studies.portland.load_district_data import district_data
 from rcv_strategies.utils import case_study_helpers
 
 def analyze_portland_exhaustion(district_number, k=3):

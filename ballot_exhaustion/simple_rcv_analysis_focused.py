@@ -7,7 +7,7 @@ import seaborn as sns
 from scipy import stats
 import ast
 import os
-from case_studies.NewYork_City_RCV.convert_data import process_single_file, create_candidate_mapping
+from case_studies.nyc.convert_data import process_single_file, create_candidate_mapping
 from rcv_strategies.utils import case_study_helpers
 from string import ascii_uppercase
 from rcv_strategies.core.stv_irv import STV_optimal_result_simple

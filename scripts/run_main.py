@@ -1,5 +1,5 @@
-from case_studies.Portland_City_Council_Data_and_Analysis.load_district_data import district_data
-from case_studies.Republican_Primary_Case_Data_and_Analysis.load_data import election_data
+from case_studies.portland.load_district_data import district_data
+from case_studies.republican_primary.load_data import election_data
 from rcv_strategies.core.stv_irv import STV_optimal_result_simple, IRV_ballot_exhaust
 from rcv_strategies.utils import case_study_helpers
 from rcv_strategies.core import candidate_removal
@@ -7,7 +7,7 @@ from rcv_strategies.utils import helpers as utils
 from rcv_strategies.utils.case_study_helpers import process_ballot_counts_post_elim_no_print, process_ballot_counts_post_elim, process_bootstrap_samples
 from rcv_strategies.analysis.tools import comprehensive_voting_analysis
 import pandas as pd
-from case_studies.NewYork_City_RCV.convert_data import process_single_file, create_candidate_mapping
+from case_studies.nyc.convert_data import process_single_file, create_candidate_mapping
 import os
 from string import ascii_uppercase
 

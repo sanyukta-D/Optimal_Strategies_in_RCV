@@ -6,7 +6,7 @@ import os
 import json
 
 # Local application/library specific imports
-from case_studies.Republican_Primary_Case_Data_and_Analysis.load_data import election_data
+from case_studies.republican_primary.load_data import election_data
 from rcv_strategies.utils import case_study_helpers
 from rcv_strategies.utils.case_study_helpers import process_ballot_counts_post_elim, process_bootstrap_samples
 from rcv_strategies.analysis.tools import comprehensive_voting_analysis

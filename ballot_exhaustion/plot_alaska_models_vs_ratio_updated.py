@@ -19,21 +19,20 @@ except FileNotFoundError:
         print("Could not find results data. Please run the analysis script first.")
         exit()
 
-# Filter for NYC elections only
-nyc_df = results_df[results_df['region'] == 'NYC']
+# Filter for Alaska elections only
+alaska_df = results_df[results_df['region'] == 'Alaska']
 
-if nyc_df.empty:
-    print("No NYC election data available for visualizations.")
+if alaska_df.empty:
+    print("No Alaska election data available for visualizations.")
     exit()
 
-# Updated model names and colors
+# Updated model names and colors (excluding Rank-Restricted Bootstrap for Alaska)
 model_names = {
     'beta_model_prob': 'Gap-Based Beta',
     'posterior_beta_prob': 'Similarity Beta',
     'prior_posterior_beta_prob': 'Prior-Posterior Beta',
     'unconditional_bootstrap_prob': 'Unconditional Bootstrap',
-    'category_bootstrap_prob': 'Similarity Bootstrap',
-    'limited_bootstrap_prob': 'Rank-Restricted Bootstrap'
+    'category_bootstrap_prob': 'Similarity Bootstrap'
 }
 
 # Updated model colors
@@ -42,8 +41,7 @@ model_colors = {
     'posterior_beta_prob': 'green',
     'prior_posterior_beta_prob': 'magenta',
     'unconditional_bootstrap_prob': 'orange',
-    'category_bootstrap_prob': 'red',
-    'limited_bootstrap_prob': 'purple'
+    'category_bootstrap_prob': 'red'
 }
 
 # Updated model markers
@@ -52,20 +50,19 @@ model_markers = {
     'posterior_beta_prob': '*',
     'prior_posterior_beta_prob': 's',
     'unconditional_bootstrap_prob': 'X',
-    'category_bootstrap_prob': '^',
-    'limited_bootstrap_prob': 'D'
+    'category_bootstrap_prob': '^'
 }
 
 # Sort by ratio for better visualization
-nyc_sorted = nyc_df.sort_values('strategy_exhaust_ratio')
+alaska_sorted = alaska_df.sort_values('strategy_exhaust_ratio')
 
 # Create figure
 plt.figure(figsize=(14, 9))
 
 # Plot each model
 for model, name in model_names.items():
-    if model in nyc_sorted.columns:
-        plt.plot(nyc_sorted['strategy_exhaust_ratio'], nyc_sorted[model], 
+    if model in alaska_sorted.columns:
+        plt.plot(alaska_sorted['strategy_exhaust_ratio'], alaska_sorted[model], 
                marker=model_markers[model], linestyle='-', color=model_colors[model], label=name, 
                markersize=10, linewidth=2, alpha=0.8)
     
@@ -86,7 +83,8 @@ plt.yticks(fontsize=20)
 
 # Save the figure as PDF for better quality
 plt.tight_layout()
-plt.savefig(os.path.join(output_dir, 'nyc_models_vs_ratio.pdf'), dpi=300)
-plt.savefig(os.path.join(output_dir, 'nyc_models_vs_ratio.png'), dpi=300)
-print("Created updated nyc_models_vs_ratio.png and .pdf with corrected model names and title")
-plt.close() 
+plt.savefig(os.path.join(output_dir, 'alaska_models_vs_ratio.pdf'), dpi=300)
+plt.savefig(os.path.join(output_dir, 'alaska_models_vs_ratio.png'), dpi=300)
+print("Created updated alaska_models_vs_ratio.png and .pdf with corrected model names and title")
+plt.close()
+

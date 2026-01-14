@@ -5,7 +5,7 @@ from rcv_strategies.utils import helpers as utils
 from rcv_strategies.utils.case_study_helpers import process_ballot_counts_post_elim_no_print, process_ballot_counts_post_elim, process_bootstrap_samples
 from rcv_strategies.analysis.tools import comprehensive_voting_analysis
 import pandas as pd
-from case_studies.NewYork_City_RCV.convert_data import process_single_file, create_candidate_mapping
+from case_studies.nyc.convert_data import process_single_file, create_candidate_mapping
 import os
 import time
 from string import ascii_uppercase

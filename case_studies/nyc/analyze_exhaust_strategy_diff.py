@@ -86,12 +86,13 @@ def calculate_differences(df, region):
 
 def analyze_and_visualize():
     # Load NYC data
-    nyc_path = "/Users/saeesbox/Desktop/Social_Choice_Work/codes/EC_codes/Optimal_Strategies_in_RCV/summary_table_nyc_final.xlsx"
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    nyc_path = os.path.join(base_dir, "results/tables/summary_table_nyc_final.xlsx")
     nyc_df = pd.read_excel(nyc_path)
     nyc_df = nyc_df[nyc_df['file_name'].str.contains("DEM", na=False)].copy()
     
     # Load Alaska data
-    alaska_path = "/Users/saeesbox/Desktop/Social_Choice_Work/codes/EC_codes/Optimal_Strategies_in_RCV/summary_table_alska_lite.xlsx"
+    alaska_path = os.path.join(base_dir, "results/tables/summary_table_alska_lite.xlsx")
     alaska_df = pd.read_excel(alaska_path)
     
     # Calculate differences
@@ -202,40 +203,48 @@ def analyze_and_visualize():
     # Visualizations - always sorted alphabetically
     sns.set_style("whitegrid")
     
-    # 1. Boxplot of differences by letter - NYC
+    # 1. Boxplot of differences by letter - NYC (excluding A)
     plt.figure(figsize=(14, 8))
-    letters_sorted = sorted(nyc_df_analysis['letter'].unique())
-    ax = sns.boxplot(x='letter', y='diff', data=nyc_df_analysis, order=letters_sorted, palette='Set3')
+    nyc_df_no_a = nyc_df_analysis[nyc_df_analysis['letter'] != 'A'].copy()
+    letters_sorted = sorted([l for l in nyc_df_no_a['letter'].unique() if l != 'A'])
+    ax = sns.boxplot(x='letter', y='diff', data=nyc_df_no_a, order=letters_sorted, palette='Set3')
     plt.axhline(y=0, color='r', linestyle='-', alpha=0.3)
-    plt.title('NYC: Distribution of Exhaust - Strategy Differences by Letter', fontsize=16)
-    plt.xlabel('Letter (Candidate)', fontsize=14)
-    plt.ylabel('Exhaust % - Strategy %', fontsize=14)
+    plt.title('NYC: Exhaust - Victory Gap Differences by Letter', fontsize=24)
+    plt.xlabel('Candidate Letter', fontsize=22)
+    plt.ylabel('Exhaust % - Victory Gap %', fontsize=22)
     plt.grid(True, linestyle='--', alpha=0.7)
+    
+    # Increase tick label font sizes
+    ax.tick_params(labelsize=20)
     
     # Add count labels
     for i, letter in enumerate(letters_sorted):
-        count = nyc_df_analysis[nyc_df_analysis['letter'] == letter].shape[0]
-        ax.text(i, ax.get_ylim()[0], f'n={count}', ha='center', va='bottom', fontsize=10)
+        count = nyc_df_no_a[nyc_df_no_a['letter'] == letter].shape[0]
+        ax.text(i, ax.get_ylim()[0], f'n={count}', ha='center', va='bottom', fontsize=18)
     
     plt.tight_layout()
+    plt.savefig('nyc_exhaust_strategy_diff_boxplot.pdf', dpi=300)
     plt.savefig('nyc_exhaust_strategy_diff_boxplot.png', dpi=300)
     
-    # 2. Boxplot of differences by letter - Alaska
+    # 2. Boxplot of differences by letter - Alaska (excluding A)
     plt.figure(figsize=(14, 8))
-    letters_sorted = sorted(alaska_df_analysis['letter'].unique())
-    ax = sns.boxplot(x='letter', y='diff', data=alaska_df_analysis, order=letters_sorted, palette='Set3')
+    alaska_df_no_a = alaska_df_analysis[alaska_df_analysis['letter'] != 'A'].copy()
+    letters_sorted = sorted([l for l in alaska_df_no_a['letter'].unique() if l != 'A'])
+    ax = sns.boxplot(x='letter', y='diff', data=alaska_df_no_a, order=letters_sorted, palette='Set3')
     plt.axhline(y=0, color='r', linestyle='-', alpha=0.3)
-    plt.title('Alaska: Distribution of Exhaust - Strategy Differences by Letter', fontsize=16)
-    plt.xlabel('Letter (Candidate)', fontsize=14)
-    plt.ylabel('Exhaust % - Strategy %', fontsize=14)
+    plt.title('Alaska: Exhaust - Victory Gap Differences by Letter', fontsize=24)
+    plt.xlabel('Candidate Letter', fontsize=22)
+    plt.ylabel('Exhaust % - Victory Gap %', fontsize=22)
+    ax.tick_params(labelsize=20)
     plt.grid(True, linestyle='--', alpha=0.7)
     
     # Add count labels
     for i, letter in enumerate(letters_sorted):
-        count = alaska_df_analysis[alaska_df_analysis['letter'] == letter].shape[0]
-        ax.text(i, ax.get_ylim()[0], f'n={count}', ha='center', va='bottom', fontsize=10)
+        count = alaska_df_no_a[alaska_df_no_a['letter'] == letter].shape[0]
+        ax.text(i, ax.get_ylim()[0], f'n={count}', ha='center', va='bottom', fontsize=18)
     
     plt.tight_layout()
+    plt.savefig('alaska_exhaust_strategy_diff_boxplot.pdf', dpi=300)
     plt.savefig('alaska_exhaust_strategy_diff_boxplot.png', dpi=300)
     
     # 3. Boxplot of exhaust percentages by letter - NYC

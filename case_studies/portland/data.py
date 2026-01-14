@@ -1,5 +1,5 @@
 import pandas as pd
-from case_studies.Portland_City_Council_Data_and_Analysis.load_district_data import district_data
+from case_studies.portland.load_district_data import district_data
 
 def create_portland_strategy_data():
     """

@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from case_studies.portland.data import create_portland_summary_dataframe, create_portland_strategy_data
 from rcv_strategies.core.stv_irv import STV_optimal_result_simple
-from case_studies.Portland_City_Council_Data_and_Analysis.load_district_data import district_data
+from case_studies.portland.load_district_data import district_data
 from rcv_strategies.utils import case_study_helpers
 from scipy import stats
 
