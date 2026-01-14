@@ -7,12 +7,6 @@ A computational framework for finding optimal vote-addition strategies in ranked
 
 ## Overview
 
-This repository accompanies the paper:
-
-> **Strategic Interactions in Modern Elections and Markets**
-> Sanyukta Deshpande and Sheldon H. Jacobson
-> University of Illinois at Urbana-Champaign
-
 We develop algorithms to:
 1. Find optimal vote-addition strategies for any candidate to place in the top k
 2. Trim irrelevant candidates under budget uncertainty in O(mn^4) time
@@ -65,19 +59,8 @@ We validate our framework on 130+ real-world RCV elections across:
 - **Alaska** - 53 statewide elections (IRV)
 - **New York City** - 78 municipal elections (IRV)
 - **Portland** - 4 city council districts (multi-winner STV)
-- **Republican Primary** - Hypothetical RCV analysis
+- **Republican Primary** - 2024 Republican Primary Fairvote Poll analysis
 
-## Citation
-
-```bibtex
-@phdthesis{deshpande2025strategic,
-  title={Strategic Interactions in Modern Elections and Markets},
-  author={Deshpande, Sanyukta},
-  year={2025},
-  school={University of Illinois at Urbana-Champaign},
-  advisor={Jacobson, Sheldon H.}
-}
-```
 
 ## License
 
