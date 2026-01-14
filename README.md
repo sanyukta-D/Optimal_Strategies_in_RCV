@@ -29,14 +29,19 @@ pip install -r requirements.txt
 ## Repository Structure
 
 ```
-├── rcv_strategies/      # Core algorithms
-│   ├── core/            # Optimization and strategy computation
-│   ├── utils/           # Helper functions
-│   └── analysis/        # Analysis tools (heatmaps, probability tables)
-├── case_studies/        # Empirical analyses (Alaska, NYC, Portland)
-├── notebooks/           # Interactive tutorials
-├── scripts/             # Reproduction scripts
-└── results/             # Generated outputs (not tracked)
+├── rcv_strategies/           # Core algorithms
+│   ├── core/                 # Optimization, strategy computation, candidate removal
+│   ├── utils/                # Helper functions, case study utilities
+│   └── analysis/             # Analysis tools (heatmaps, probability tables)
+├── case_studies/             # Empirical analyses with data and scripts
+│   ├── alaska/               # Alaska statewide elections (53 elections)
+│   ├── nyc/                  # NYC municipal elections (78 elections)
+│   ├── portland/             # Portland city council (4 districts, multi-winner STV)
+│   └── republican_primary/   # Republican primary analysis
+├── ballot_exhaustion/        # Ballot exhaustion analysis and probability models
+├── notebooks/                # Interactive tutorials
+├── scripts/                  # Reproduction scripts
+└── results/                  # Generated outputs (not tracked)
 ```
 
 ## Usage
@@ -56,10 +61,11 @@ python scripts/run_portland.py
 
 ## Case Studies
 
-We validate our framework on 110+ real-world RCV elections across:
-- Alaska (statewide elections)
-- New York City (municipal elections)
-- Portland (city council elections)
+We validate our framework on 130+ real-world RCV elections across:
+- **Alaska** - 53 statewide elections (IRV)
+- **New York City** - 78 municipal elections (IRV)
+- **Portland** - 4 city council districts (multi-winner STV)
+- **Republican Primary** - Hypothetical RCV analysis
 
 ## Citation
 
