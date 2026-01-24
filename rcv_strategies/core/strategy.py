@@ -761,8 +761,10 @@ def process_combination(comb, candidates, k, Q_new, ballot_counts, budget, og_wi
                     campaigned_dict_list.append(check_ballot_counts)
                     budget_list_flip.append(amount_spent)
                 else:
-                    # Store locally
-                    local_failed_orders[tuple(current_main[:failed_at])] = True
+                    # Store locally - but only if partial order has more than k elements
+                    # (single-element orders are too broad and incorrectly prune valid paths)
+                    if failed_at is not None and failed_at > k:
+                        local_failed_orders[tuple(current_main[:failed_at])] = True
 
             if len(budget_list_flip) > 0:
                 current_min_budget = min(budget_list_flip)

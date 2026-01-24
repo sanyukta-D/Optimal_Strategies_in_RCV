@@ -1,8 +1,10 @@
 import pandas as pd
 import os
+from pathlib import Path
 
-# Base directory for data
-BASE_DIR = "Case_Studies/Portland_City_Council_Data_and_Analysis"
+# Base directory for data - use path relative to this file's location
+_THIS_DIR = Path(__file__).parent
+BASE_DIR = _THIS_DIR / "data"
 
 # Dictionary to store all data
 district_data = {}
@@ -10,22 +12,28 @@ district_data = {}
 # Load data for each district
 for district_num in range(1, 5):  # Districts 1-4
     # Load DataFrame
-    file_path = os.path.join(BASE_DIR, f"Dis_{district_num}", f"Election_results_dis{district_num}.csv")
-    df = pd.read_csv(file_path)
-    df = df.drop(columns=['RowNumber'])
-    
+    file_path = BASE_DIR / f"Dis_{district_num}" / f"Election_results_dis{district_num}.csv"
+
+    # Only load if file exists (lazy loading for missing districts)
+    if file_path.exists():
+        df = pd.read_csv(file_path)
+        if 'RowNumber' in df.columns:
+            df = df.drop(columns=['RowNumber'])
+    else:
+        df = None
+
     # Get bootstrap samples directory
-    bootstrap_dir = os.path.join(BASE_DIR, f"Dis_{district_num}", f"bootstrap_samples_dis{district_num}")
-    
+    bootstrap_dir = BASE_DIR / f"Dis_{district_num}" / f"bootstrap_samples_dis{district_num}"
+
     # Get list of bootstrap files if directory exists
     bootstrap_files = []
-    if os.path.exists(bootstrap_dir):
+    if bootstrap_dir.exists():
         bootstrap_files = os.listdir(bootstrap_dir)
-    
+
     # Store DataFrame and bootstrap files in dictionary
     district_data[district_num] = {
         'df': df,
-        'bootstrap_dir': bootstrap_dir,
+        'bootstrap_dir': str(bootstrap_dir),
         'bootstrap_files': bootstrap_files
     }
     

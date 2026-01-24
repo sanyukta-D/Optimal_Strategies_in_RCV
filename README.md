@@ -20,9 +20,28 @@ cd Optimal_Strategies_in_RCV
 pip install -r requirements.txt
 ```
 
+## Web Application
+
+**Try it online:** Upload your election data and get instant analysis!
+
+### Run Locally
+```bash
+pip install -r webapp/requirements.txt
+streamlit run webapp/app.py
+```
+
+### Deploy to Streamlit Cloud (Free)
+1. Fork this repo
+2. Go to [share.streamlit.io](https://share.streamlit.io)
+3. Connect your repo, set main file to `webapp/app.py`
+4. Click Deploy
+
+See [webapp/README.md](webapp/README.md) for details.
+
 ## Repository Structure
 
 ```
+├── webapp/                   # Web application (Streamlit)
 ├── rcv_strategies/           # Core algorithms
 │   ├── core/                 # Optimization, strategy computation, candidate removal
 │   ├── utils/                # Helper functions, case study utilities

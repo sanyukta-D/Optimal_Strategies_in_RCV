@@ -2,19 +2,20 @@
 """
 Run a comprehensive analysis of all probability models across all RCV elections.
 
-This script runs the analyze_all_elections function from simple_rcv_analysis_focused.py
-to compare five probability models:
-1. Theoretical Beta Model
-2. Posterior Beta Model
-3. Category-based Bootstrap (with 1000 iterations)
-4. Limited Ranking Bootstrap (with 1000 iterations)
-5. Unconditional Bootstrap (with 1000 iterations)
+This script runs the analyze_all_elections function from probability_models.py
+to compare six probability models:
+1. Gap-Based Beta
+2. Similarity Beta
+3. Prior-Posterior Beta
+4. Similarity Bootstrap (with 1000 iterations)
+5. Rank-Restricted Bootstrap (with 1000 iterations)
+6. Unconditional Bootstrap (with 1000 iterations)
 
 It creates comprehensive visualizations comparing these models and outputs a detailed CSV
 with all results.
 """
 
-import simple_rcv_analysis_focused as sraf
+import probability_models as sraf
 import argparse
 import os
 import time

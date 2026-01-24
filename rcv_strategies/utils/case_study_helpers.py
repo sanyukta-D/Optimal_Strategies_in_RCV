@@ -228,13 +228,73 @@ def convert_to_percentage(item, total):
         return {k: convert_to_percentage(v, total) for k, v in item.items()}
     else:
         return item
+
+
+def convert_combination_strats_to_candidate_strats(strats_frame, k, results):
+    """
+    Convert combination-based strategies to candidate-based strategies.
+
+    For multi-winner elections, reach_any_winners_campaign returns strategies
+    keyed by winner combinations (e.g., 'ABC', 'ABD'). This function converts
+    to per-candidate strategies for display.
+
+    Args:
+        strats_frame: Dict mapping winner combinations to [cost, additions]
+        k: Number of winners
+        results: Social choice order (first k are original winners)
+
+    Returns:
+        Dict mapping individual candidates to [victory_gap, strategy_detail]
+    """
+    if not strats_frame or k <= 1:
+        # For single-winner, the format is already per-candidate
+        return strats_frame
+
+    original_winners = set(results[:k])
+    candidate_strats = {}
+
+    # Original winners get gap = 0
+    for winner in original_winners:
+        candidate_strats[winner] = [0.0, {}]
+
+    # For non-winners, find minimum cost to become a winner
+    for candidate in results[k:]:
+        min_cost = float('inf')
+        best_additions = {}
+
+        # Look through all combinations that include this candidate
+        for combo_key, value in strats_frame.items():
+            # Handle both list/tuple and other formats
+            if isinstance(value, (list, tuple)) and len(value) >= 2:
+                cost = value[0]
+                additions = value[1]
+            else:
+                continue
+
+            if candidate in combo_key and cost < min_cost:
+                min_cost = cost
+                # Convert additions to dict format if needed
+                if isinstance(additions, dict):
+                    best_additions = additions
+                elif isinstance(additions, (list, tuple)):
+                    # If it's a list, convert to dict with candidate as key
+                    best_additions = {candidate: min_cost} if min_cost > 0 else {}
+                else:
+                    best_additions = {candidate: min_cost} if min_cost > 0 else {}
+
+        if min_cost != float('inf'):
+            candidate_strats[candidate] = [min_cost, best_additions]
+        # If no combination found, candidate is beyond the budget threshold
+
+    return candidate_strats
     
-def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_cands, 
-                                    check_strats=False, budget_percent=0, 
-                                    check_removal_here=False, keep_at_least=8, rigorous_check=True):
+def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_cands,
+                                    check_strats=False, budget_percent=0,
+                                    check_removal_here=False, keep_at_least=8, rigorous_check=True,
+                                    spl_check=False, allowed_length=None):
     """
     Process ballot counts after eliminating certain candidates.
-    
+
     Parameters:
       ballot_counts (dict): Dictionary of ballot counts
       k (int): Number of winners to select
@@ -245,7 +305,9 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
       check_removal_here (bool): Whether to check candidate removal
       keep_at_least (int): Minimum number of candidates to keep
       rigorous_check (bool): Whether to perform rigorous check in candidate removal
-      
+      spl_check (bool): Whether to do special STV check for multi-winner early winners
+      allowed_length (int): Maximum length of ballot chains for strategy computation (default: None)
+
     Returns:
       dict: A dictionary with the following keys:
             - "num_candidates": Total number of candidates
@@ -266,17 +328,17 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
 
     # Remaining candidates after elimination.
     elec_cands = [cand for cand in candidates if cand not in elim_cands]
-    
+
     # Calculate full and filtered vote counts.
     full_aggre_v_dict = utils.get_new_dict(ballot_counts)
     aggre_v_dict = utils.get_new_dict(filtered_data)
-    
+
     # Total votes and quota (Q).
     total_votes = sum(full_aggre_v_dict.get(cand, 0) for cand in candidates)
     Q = round(total_votes / (k + 1) + 1, 3)
     if k==1:
         Q = Q*(k+1)
-    
+
     # Calculate strict support for eliminated candidates.
     letter_counts = {}
     for key, value in ballot_counts.items():
@@ -298,8 +360,12 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
     results, subresults = utils.return_main_sub(rt)
     budget = budget_percent * total_votes * 0.01
     zeros, c_l = predict_losses(ballot_counts, results, k, Q, budget)
-    
+
     # Check candidate removal if requested.
+    candidates_removed = []
+    candidates_retained = candidates
+    group_remaining = ''
+
     if check_removal_here:
         candidates_reduced, group_remaining, stop = remove_irrelevent(
             ballot_counts, rt, results[:keep_at_least], budget, ''.join(results), rigorous_check
@@ -310,35 +376,100 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
         else:
             candidates_removed = []
             candidates_retained = candidates
-    else:
-        candidates_removed = []
-        candidates_retained = candidates
+
     strats_frame_percent = {}
+    strats_frame = {}
+
     # Check strategies if requested
-    if len(candidates)> 2 and check_strats:
-        if len(candidates_retained)>1 and len(candidates_retained) < len(candidates)-2:
+    if len(candidates) > 2 and check_strats:
+        if len(candidates_retained) == 1:
+            # Only winner remains after removal - this is too aggressive for strategy computation
+            # Return empty strategies so webapp's divide-and-conquer can try a lower budget
+            strats_frame = {}
+            strats_frame_percent = {}
+        elif len(candidates_retained) > 1 and len(candidates_retained) < len(candidates) - 2:
+            # Filter ballots to only include retained candidates
             filtered_data = {}
-            elim_strings = ''.join(candidates_removed)
+            elim_strings = ''.join(candidates_removed) if isinstance(candidates_removed, str) else ''.join(candidates_removed)
             for key, value in ballot_counts.items():
                 new_key = ''.join(char for char in key if char not in elim_strings)
                 filtered_data[new_key] = filtered_data.get(new_key, 0) + value
             filtered_data.pop('', None)
-            elec_cands = candidates_retained
-            # print(elec_cands)
-            strats_frame = reach_any_winners_campaign_parallel(elec_cands, k, Q, filtered_data, budget, c_l=[], zeros=0)
+
+            agg_v_dict = utils.get_new_dict(filtered_data)
+
+            # ============================================================
+            # MULTI-WINNER EARLY WINNER HANDLING (from process_bootstrap_samples)
+            # ============================================================
+            early_winner_handled = False
+
+            if k > 1:  # Multi-winner election
+                # Check for immediate winners (candidates that exceed quota after removal)
+                for cand_winner in candidates_retained:
+                    if agg_v_dict.get(cand_winner, 0) >= Q:
+                        # This candidate wins during elimination of irrelevant candidates
+                        removal_permitted = permit_STV_removal(
+                            cand_winner, ballot_counts, Q, candidates_retained,
+                            group_remaining, budget_percent, spl_check=spl_check
+                        )
+
+                        if removal_permitted:
+                            # Use ballot state from the correct round in the collection
+                            small_election_number = len(candidates) - len(candidates_retained)
+                            if small_election_number < len(collection):
+                                ballot_counts_short = collection[small_election_number][0]
+                                test = [rt[i][0] for i in range(small_election_number, len(rt))]
+                                ordered_test = sorted(test, key=lambda x: results.index(x))
+                                strats_frame = reach_any_winners_campaign(
+                                    ordered_test, k, Q, ballot_counts_short, budget,
+                                    allowed_length=allowed_length
+                                )
+                                early_winner_handled = True
+                                break
+
+            # If no early winner or single-winner, use standard approach
+            if not early_winner_handled:
+                if all(agg_v_dict.get(cand, 0) < Q for cand in candidates_retained):
+                    # No immediate winners, compute strategies for all retained candidates
+                    strats_frame = reach_any_winners_campaign(
+                        candidates_retained, k, Q, filtered_data, budget,
+                        allowed_length=allowed_length
+                    )
+
+            # Convert combination-based strategies to per-candidate strategies for multi-winner
+            if k > 1 and strats_frame:
+                strats_frame = convert_combination_strats_to_candidate_strats(strats_frame, k, results)
 
             strats_frame_percent = convert_to_percentage(strats_frame, total_votes)
         else:
-            if len(candidates) <9:
-                strats_frame = reach_any_winners_campaign_parallel(elec_cands, k, Q, filtered_data, budget, c_l=[], zeros=0)
+            # Small election (< 9 candidates) - compute directly
+            if len(candidates) < 9:
+                strats_frame = reach_any_winners_campaign_parallel(
+                    elec_cands, k, Q, filtered_data, budget, c_l=[], zeros=0,
+                    allowed_length=allowed_length
+                )
+                # Convert for multi-winner
+                if k > 1 and strats_frame:
+                    strats_frame = convert_combination_strats_to_candidate_strats(strats_frame, k, results)
                 strats_frame_percent = convert_to_percentage(strats_frame, total_votes)
-    if len(candidates)==2:
+            elif k > 1 and len(candidates) <= 12:
+                # Multi-winner with moderate candidates - try without parallel
+                strats_frame = reach_any_winners_campaign(
+                    elec_cands, k, Q, filtered_data, budget,
+                    allowed_length=allowed_length
+                )
+                # Convert for multi-winner
+                if strats_frame:
+                    strats_frame = convert_combination_strats_to_candidate_strats(strats_frame, k, results)
+                strats_frame_percent = convert_to_percentage(strats_frame, total_votes)
+
+    if len(candidates) == 2:
         winner = results[0]
         loser = results[1]
-        win_margin = filtered_data[winner] - filtered_data[loser]+ 1
+        win_margin = filtered_data.get(winner, 0) - filtered_data.get(loser, 0) + 1
         strats_frame = {winner: [0.0, []], loser: [win_margin, {loser: win_margin}]}
         strats_frame_percent = convert_to_percentage(strats_frame, total_votes)
-            
+
     return {
         "num_candidates": len(candidates),
         "total_votes": total_votes,
