@@ -1,0 +1,1154 @@
+"""
+RCV Election Analyzer - Web Application
+
+A simple web interface for analyzing Ranked Choice Voting elections
+using the algorithms from the Optimal Strategies in RCV research.
+
+Based on:
+- "Optimal Strategies in Ranked Choice Voting"
+- "Simpler Than You Think: The Practical Dynamics of Ranked Choice Voting"
+
+Run with: streamlit run webapp/app.py
+"""
+
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import sys
+from pathlib import Path
+from string import ascii_uppercase, ascii_lowercase
+import numpy as np
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Import RCV analysis functions
+from rcv_strategies.core.stv_irv import IRV_optimal_result, IRV_ballot_exhaust, STV_ballot_exhaust, STV_optimal_result_simple
+from rcv_strategies.core.candidate_removal import remove_irrelevent
+from rcv_strategies.utils.helpers import get_new_dict, return_main_sub
+from rcv_strategies.utils.case_study_helpers import (
+    get_ballot_counts_df,
+    process_ballot_counts_post_elim_no_print
+)
+
+# Import probability models for ballot exhaustion analysis (6 models from paper)
+try:
+    from ballot_exhaustion.probability_models import (
+        beta_probability,           # Gap-Based Beta
+        direct_posterior_beta,      # Similarity Beta
+        prior_posterior_beta,       # Prior-Posterior Beta
+        category_based_bootstrap,   # Similarity Bootstrap
+        limited_ranking_bootstrap,  # Rank-Restricted Bootstrap
+        unconditional_bootstrap     # Unconditional Bootstrap
+    )
+    PROB_MODELS_AVAILABLE = True
+except ImportError as e:
+    PROB_MODELS_AVAILABLE = False
+    print(f"Probability models not available: {e}")
+
+# === PAGE CONFIG ===
+st.set_page_config(
+    page_title="RCV Election Analyzer",
+    page_icon="🗳️",
+    layout="wide",
+)
+
+# === CUSTOM CSS (matching paper colors) ===
+st.markdown("""
+<style>
+    .main-header {
+        text-align: center;
+        padding: 1.5rem;
+        background: linear-gradient(90deg, #1f4e79, #2d5aa0);
+        color: white;
+        border-radius: 0.5rem;
+        margin-bottom: 2rem;
+    }
+    .metric-box {
+        background: #f8f9fa;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        border-left: 4px solid #1f4e79;
+        margin: 0.5rem 0;
+    }
+    .insight-box {
+        background: #e8f4f8;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        border-left: 4px solid #17a2b8;
+        margin: 1rem 0;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# === HEADER ===
+st.markdown("""
+<div class="main-header">
+    <h1>🗳️ RCV Election Analyzer</h1>
+    <p>Computational analysis of ranked choice voting dynamics</p>
+</div>
+""", unsafe_allow_html=True)
+
+# === HELPER FUNCTIONS ===
+
+# Color scheme from the paper
+CATEGORY_COLORS = {
+    "Winner": {"bg": "rgb(189, 223, 167)", "hex": "#bddfa7"},           # Soft mint green
+    "Near Winner": {"bg": "rgb(223, 240, 216)", "hex": "#dff0d8"},      # Very light green
+    "Contender": {"bg": "rgb(253, 245, 206)", "hex": "#fdf5ce"},        # Pale cream/yellow
+    "Competitive": {"bg": "rgb(253, 231, 208)", "hex": "#fde7d0"},      # Soft peach
+    "Distant": {"bg": "rgb(248, 218, 205)", "hex": "#f8dacd"},          # Light salmon
+    "Far Behind": {"bg": "rgb(242, 201, 198)", "hex": "#f2c9c6"},       # Muted red/pink
+}
+
+def detect_format(df):
+    """Detect the format of the uploaded CSV."""
+    cols = df.columns.tolist()
+    if any(col.startswith('Choice_') for col in cols):
+        return 'choice'
+    elif any(col.startswith('rank') for col in cols):
+        return 'rank'
+    return None
+
+def convert_rank_to_choice(df):
+    """Convert rank1, rank2... format to Choice_1, Choice_2... format."""
+    rename_map = {}
+    for col in df.columns:
+        if col.startswith('rank') and col[4:].isdigit():
+            rename_map[col] = f"Choice_{col[4:]}"
+    return df.rename(columns=rename_map)
+
+def get_candidates_from_df(df):
+    """Extract unique candidates from the dataframe."""
+    choice_cols = [col for col in df.columns if col.startswith('Choice_')]
+    all_candidates = set()
+    for col in choice_cols:
+        candidates = df[col].dropna().unique()
+        all_candidates.update(candidates)
+
+    exclude = {'', 'skipped', 'overvote', 'undervote', 'writein', 'exhausted', 'nan', 'none'}
+    candidates = [c for c in all_candidates
+                  if str(c).strip().lower() not in exclude
+                  and pd.notna(c)
+                  and str(c).strip() != '']
+
+    # Convert all to strings for consistency
+    candidates = [str(c).strip() for c in candidates]
+
+    return sorted(set(candidates), key=str)
+
+def categorize_gap(gap, k=1):
+    """
+    Categorize a candidate based on their victory gap (from paper).
+    Thresholds are scaled for multi-winner: k=1 uses base thresholds,
+    k=3 uses half (normalized from 50% quota to 25% quota).
+    """
+    # Scale factor: for k=1, quota ~50%; for k=3, quota ~25% (half)
+    # Thresholds for k=1: 5, 20, 30, 45
+    # Thresholds for k=3: 2.5, 10, 15, 22.5 (scaled by quota ratio)
+    scale = 2 / (k + 1)  # For k=1: 1.0, for k=3: 0.5
+
+    if gap == 0:
+        return "Winner"
+    elif gap <= 5 * scale:
+        return "Near Winner"
+    elif gap <= 20 * scale:
+        return "Contender"
+    elif gap <= 30 * scale:
+        return "Competitive"
+    elif gap <= 45 * scale:
+        return "Distant"
+    else:
+        return "Far Behind"
+
+def is_selfish_strategy(strategy_detail, candidate_code):
+    """Check if strategy is selfish (only self-support) or non-selfish."""
+    if not strategy_detail:
+        return True  # Default to selfish if no detail
+    # Strategy is selfish if all votes go to self
+    for cand, votes in strategy_detail.items():
+        if cand != candidate_code and votes > 0:
+            return False
+    return True
+
+def compute_preference_order_alignment(results, strategies):
+    """
+    Check if Social Choice Order matches Victory Gap Order.
+    Returns: (matches, victory_gap_order, mismatches)
+    """
+    # Get victory gaps for each candidate
+    gap_data = []
+    for code in results:
+        strat = strategies.get(code, None)
+        if strat and isinstance(strat, (list, tuple)) and len(strat) > 0:
+            gap = strat[0]
+        else:
+            gap = float('inf')
+        gap_data.append((code, gap))
+
+    # Sort by victory gap to get Victory Gap Order
+    victory_gap_order = [x[0] for x in sorted(gap_data, key=lambda x: x[1])]
+
+    # Check alignment
+    matches = results == victory_gap_order
+
+    # Find mismatches
+    mismatches = []
+    for i, (sco, vgo) in enumerate(zip(results, victory_gap_order)):
+        if sco != vgo:
+            mismatches.append((i+1, sco, vgo))
+
+    return matches, victory_gap_order, mismatches
+
+# === SIDEBAR ===
+with st.sidebar:
+    st.markdown("## Settings")
+
+    k = st.number_input(
+        "Number of Winners",
+        min_value=1, max_value=10, value=1,
+        help="Set to 1 for single-winner elections (Mayor, Governor)"
+    )
+
+    budget_percent = st.slider(
+        "Budget / Allowance (% of total votes)",
+        0.0, 100.0, 10.0, 0.5,
+        help="Maximum additional votes to consider for strategy analysis (algorithmic traceability threshold)"
+    )
+
+    with st.expander("Advanced Options"):
+        keep_at_least = st.slider(
+            "Keep at least (candidates)",
+            3, 15, 8,
+            help="Minimum candidates to retain after removal"
+        )
+        rigorous_check = st.checkbox("Rigorous candidate removal", value=True)
+        check_strategies = st.checkbox("Compute optimal strategies", value=True)
+
+    st.markdown("---")
+    st.markdown("### References")
+    st.markdown("""
+    Based on:
+    - *Optimal Strategies in Ranked Choice Voting*
+    - *Simpler Than You Think: The Practical Dynamics of RCV*
+
+    [GitHub](https://github.com/sanyukta-D/Optimal_Strategies_in_RCV)
+    """)
+
+# === MAIN CONTENT ===
+
+# File upload
+st.markdown("## Upload Election Data")
+
+col1, col2 = st.columns([2, 1])
+
+with col1:
+    uploaded_file = st.file_uploader(
+        "Choose your election CSV file",
+        type=["csv"],
+        help="Upload a CSV with ranked choice voting data"
+    )
+
+with col2:
+    with st.expander("📋 Accepted File Formats", expanded=False):
+        st.markdown("""
+        **Column naming (one of):**
+        - `Choice_1, Choice_2, Choice_3, ...`
+        - `rank1, rank2, rank3, ...`
+
+        **Structure:**
+        - One row per ballot
+        - Each column = one rank position
+        - Cell values = candidate names
+        - Empty cells for unranked positions
+
+        **Example:**
+        | Choice_1 | Choice_2 | Choice_3 |
+        |----------|----------|----------|
+        | Alice    | Bob      | Carol    |
+        | Bob      | Alice    |          |
+        | Carol    | Bob      | Alice    |
+
+        **Notes:**
+        - Extra columns (RowNumber, ID) are ignored
+        - Values like 'skipped', 'overvote', 'undervote', 'writein' are excluded
+        """)
+    use_example = st.checkbox("Use example data")
+
+# Load example data if requested
+if use_example and uploaded_file is None:
+    base_path = Path(__file__).parent.parent / "case_studies"
+
+    # Collect examples from multiple sources
+    example_options = {}
+
+    # Alaska examples (single-winner)
+    alaska_path = base_path / "alaska" / "data"
+    if alaska_path.exists():
+        for f in list(alaska_path.glob("*.csv"))[:5]:
+            example_options[f"Alaska: {f.stem}"] = f
+
+    # Portland examples (multi-winner k=3)
+    portland_path = base_path / "portland" / "data"
+    if portland_path.exists():
+        for i in range(1, 5):
+            dis_path = portland_path / f"Dis_{i}" / f"Election_results_dis{i}.csv"
+            if dis_path.exists():
+                example_options[f"Portland District {i} (k=3)"] = dis_path
+
+    if example_options:
+        selected_example = st.selectbox(
+            "Select example election",
+            options=list(example_options.keys()),
+            help="Alaska = single-winner (k=1), Portland = multi-winner (k=3)"
+        )
+        uploaded_file = example_options[selected_example]
+
+        # Auto-set k for Portland
+        if "Portland" in selected_example:
+            st.info("💡 Portland uses multi-winner STV with k=3. Set 'Number of Winners' to 3 in sidebar.")
+
+# Process uploaded file
+if uploaded_file is not None:
+    try:
+        # Load data
+        if isinstance(uploaded_file, Path):
+            df = pd.read_csv(uploaded_file)
+            file_name = uploaded_file.name
+        else:
+            df = pd.read_csv(uploaded_file)
+            file_name = uploaded_file.name
+
+        # Detect and convert format
+        data_format = detect_format(df)
+        if data_format == 'rank':
+            df = convert_rank_to_choice(df)
+            st.info("Converted rank format to standard Choice format")
+        elif data_format is None:
+            st.error("Could not detect data format.")
+            st.markdown(f"""
+            **Your columns:** `{', '.join(df.columns[:10])}`{'...' if len(df.columns) > 10 else ''}
+
+            **Expected formats:**
+            - `Choice_1, Choice_2, Choice_3, ...` (Portland/NYC style)
+            - `rank1, rank2, rank3, ...` (alternative style)
+
+            Please rename your columns to match one of these formats.
+            """)
+            st.stop()
+
+        # Data preview
+        st.markdown("## Data Preview")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Ballots", f"{len(df):,}")
+        with col2:
+            st.metric("Columns", len(df.columns))
+        with col3:
+            choice_cols = [c for c in df.columns if c.startswith('Choice_')]
+            st.metric("Ranking Depth", len(choice_cols))
+
+        with st.expander("View Raw Data"):
+            st.dataframe(df.head(10), use_container_width=True)
+
+        # Detect candidates
+        candidates = get_candidates_from_df(df)
+
+        if len(candidates) == 0:
+            st.error("No candidates detected in the data.")
+            choice_cols = [c for c in df.columns if c.startswith('Choice_')]
+            st.markdown(f"**Choice columns found:** {choice_cols}")
+            if choice_cols:
+                st.markdown(f"**Sample values in {choice_cols[0]}:** {df[choice_cols[0]].dropna().unique()[:10].tolist()}")
+            st.stop()
+        elif len(candidates) > 52:
+            st.error(f"Too many candidates ({len(candidates)}). Maximum supported is 52.")
+            st.stop()
+        else:
+            st.success(f"Detected {len(candidates)} candidates")
+
+        # Create candidate mapping
+        candidates_mapping = {name: (ascii_uppercase + ascii_lowercase)[i] for i, name in enumerate(candidates)}
+        reverse_mapping = {v: k for k, v in candidates_mapping.items()}
+
+        with st.expander("Candidate Mapping"):
+            mapping_df = pd.DataFrame([
+                {"Letter": v, "Candidate": k}
+                for k, v in candidates_mapping.items()
+            ])
+            st.dataframe(mapping_df, use_container_width=True, hide_index=True)
+
+        # Run analysis
+        if st.button("Run Analysis", type="primary", use_container_width=True):
+
+            progress = st.progress(0)
+            status = st.empty()
+
+            try:
+                # Step 1: Initial ballot counts with alphabetical mapping
+                status.text("Converting ballots...")
+                progress.progress(10)
+
+                initial_mapping = candidates_mapping.copy()
+                initial_ballot_counts = get_ballot_counts_df(initial_mapping, df)
+                total_votes = sum(initial_ballot_counts.values())
+                initial_candidates_list = list(initial_mapping.values())
+
+                if total_votes == 0:
+                    st.error("No valid ballots found. Check your data format.")
+                    st.stop()
+
+                # Step 2: First STV run to determine social choice order
+                status.text("Determining social choice order...")
+                progress.progress(20)
+
+                Q = round(total_votes / (k + 1) + 1, 3)
+                if k == 1:
+                    Q = Q * (k + 1)
+
+                rt_initial, dt_initial, _ = STV_optimal_result_simple(
+                    initial_candidates_list, initial_ballot_counts, k, Q
+                )
+                initial_results, _ = return_main_sub(rt_initial)
+
+                # Step 3: CRITICAL - Remap so Winner=A, Runner-up=B, etc.
+                status.text("Remapping candidates by social choice order...")
+                progress.progress(30)
+
+                # Get candidate names in winning order
+                initial_reverse = {v: k for k, v in initial_mapping.items()}
+                ordered_candidate_names = [initial_reverse[code] for code in initial_results]
+
+                # Create final mapping: Winner→A, Runner-up→B, etc.
+                final_mapping = {name: (ascii_uppercase + ascii_lowercase)[i] for i, name in enumerate(ordered_candidate_names)}
+                reverse_mapping = {v: k for k, v in final_mapping.items()}
+
+                # Rebuild ballot counts with social-choice-based mapping
+                ballot_counts = get_ballot_counts_df(final_mapping, df)
+                candidates_list = list(final_mapping.values())  # Now A=winner, B=runner-up, etc.
+
+                # Step 4: Second STV run on remapped data
+                status.text("Running comprehensive RCV analysis...")
+                progress.progress(40)
+
+                rt2, dt2, _ = STV_optimal_result_simple(candidates_list, ballot_counts, k, Q)
+                results_alphabetical, _ = return_main_sub(rt2)
+
+                # Step 5: Run strategy analysis with divide-and-conquer for large elections
+                status.text("Computing optimal strategies...")
+                progress.progress(60)
+
+                # For multi-winner (k > 1), use higher keep_at_least for large elections
+                effective_keep_at_least = keep_at_least
+                if k > 1 and len(candidates_list) > 15:
+                    effective_keep_at_least = max(keep_at_least, min(20, len(candidates_list) - 5))
+
+                analysis_result = process_ballot_counts_post_elim_no_print(
+                    ballot_counts=ballot_counts,
+                    k=k,
+                    candidates=candidates_list,
+                    elim_cands=[],
+                    check_strats=check_strategies,
+                    budget_percent=budget_percent,
+                    check_removal_here=(len(candidates_list) > 9),
+                    keep_at_least=effective_keep_at_least,
+                    rigorous_check=rigorous_check,
+                    spl_check=(k > 1)  # Enable special STV check for multi-winner
+                )
+
+                results = analysis_result.get("overall_winning_order", candidates_list)
+                strategies = analysis_result.get("Strategies", {})
+                Q = analysis_result.get("quota", Q)
+
+                # Divide and conquer: if strategies empty for large election, find threshold
+                # by DECREASING budget until candidate removal can reduce to tractable size
+                computed_threshold = budget_percent
+                if not strategies and len(candidates_list) > 8 and check_strategies:
+                    status.text("Finding tractable threshold for strategy computation...")
+
+                    def try_budget(test_budget):
+                        """Helper to test if a budget works."""
+                        result = process_ballot_counts_post_elim_no_print(
+                            ballot_counts=ballot_counts,
+                            k=k,
+                            candidates=candidates_list,
+                            elim_cands=[],
+                            check_strats=True,
+                            budget_percent=test_budget,
+                            check_removal_here=True,
+                            keep_at_least=effective_keep_at_least,
+                            rigorous_check=rigorous_check,
+                            spl_check=(k > 1)  # Enable special STV check for multi-winner
+                        )
+                        return result if result.get("Strategies", {}) else None
+
+                    # Phase 1: Coarse search - find approximate working budget
+                    # Start with large steps, then finer steps below 5%
+                    coarse_budgets = [b for b in [30, 25, 20, 15, 10, 7.5, 5] if b < budget_percent]
+                    fine_budgets = [4, 3, 2.5, 2, 1.5, 1, 0.8, 0.6, 0.4, 0.2]
+                    all_budgets = coarse_budgets + fine_budgets
+
+                    working_budget = None
+                    working_result = None
+
+                    for test_budget in all_budgets:
+                        if test_budget >= budget_percent:
+                            continue
+                        result = try_budget(test_budget)
+                        if result:
+                            working_budget = test_budget
+                            working_result = result
+                            break
+
+                    # Phase 2: Binary search to find highest working budget (with 0.1% precision for fine, 0.5% for coarse)
+                    if working_budget is not None:
+                        # Search between working_budget and the previous failed budget
+                        try:
+                            idx = all_budgets.index(working_budget)
+                            upper = all_budgets[idx - 1] if idx > 0 else budget_percent
+                        except ValueError:
+                            upper = budget_percent
+                        lower = working_budget
+
+                        # Use finer precision (0.1%) for small budgets, coarser (0.5%) for larger
+                        precision = 0.1 if working_budget < 5 else 0.5
+
+                        while upper - lower > precision:
+                            mid = round((upper + lower) / 2, 2)
+                            result = try_budget(mid)
+                            if result:
+                                lower = mid
+                                working_budget = mid
+                                working_result = result
+                            else:
+                                upper = mid
+
+                        # Use the best working budget found
+                        strategies = working_result.get("Strategies", {})
+                        computed_threshold = working_budget
+                        analysis_result["candidates_removed"] = working_result.get("candidates_removed", [])
+                        analysis_result["candidates_retained"] = working_result.get("candidates_retained", [])
+
+                # Results should now be ['A', 'B', 'C', ...] where first k are winners
+                # For multi-winner (k > 1), first k candidates are all winners
+                winner_codes = results[:k]
+                winners = [reverse_mapping.get(code, code) for code in winner_codes]
+                winner = ", ".join(winners) if k > 1 else winners[0]
+
+                # Store social choice order for display (names in winning order)
+                social_choice_order = ordered_candidate_names
+
+                # Update candidates_mapping to final_mapping for display
+                candidates_mapping = final_mapping
+
+                # Step 6: Ballot exhaustion
+                status.text("Analyzing ballot exhaustion...")
+                progress.progress(80)
+
+                # Use appropriate exhaustion function based on k
+                if k == 1:
+                    exhausted_list, exhausted_dict = IRV_ballot_exhaust(candidates_list, ballot_counts)
+                else:
+                    exhausted_list, exhausted_dict, stv_winners = STV_ballot_exhaust(candidates_list, ballot_counts, k, Q)
+                exhausted_pct = {key: round(val/total_votes*100, 2) for key, val in exhausted_dict.items()}
+
+                total_exhausted_final = exhausted_dict.get(results[-1], 0) if results else 0
+                exhaustion_rate = round(total_exhausted_final / total_votes * 100, 2)
+
+                progress.progress(100)
+                status.text("Analysis complete!")
+
+                # ========================================
+                # RESULTS DISPLAY
+                # ========================================
+                st.markdown("---")
+                st.markdown("# Election Analysis Results")
+
+                # Overview metrics
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    if k > 1:
+                        st.metric(f"Winners ({k})", winner)
+                    else:
+                        st.metric("Winner", winner)
+                with col2:
+                    st.metric("Total Votes", f"{total_votes:,}")
+                with col3:
+                    st.metric("Quota (Droop)", f"{Q:,.0f}")
+                with col4:
+                    st.metric("Final Exhaustion", f"{exhaustion_rate:.1f}%")
+
+                # Candidate removal and threshold info
+                candidates_removed = analysis_result.get("candidates_removed", [])
+                if candidates_removed:
+                    removed_names = [reverse_mapping.get(c, c) for c in candidates_removed if c in reverse_mapping or c in candidates_removed]
+                    removal_msg = f"**Candidate Reduction:** Reduced from {len(candidates_list)} to {len(candidates_list) - len(candidates_removed)} candidates for tractable analysis."
+                    if computed_threshold < budget_percent:
+                        removal_msg += f" Found working threshold at **{computed_threshold:.1f}%** budget."
+                    st.info(removal_msg)
+                    with st.expander("Removed candidates"):
+                        st.write(", ".join(removed_names) if removed_names else str(candidates_removed))
+                elif computed_threshold < budget_percent and strategies:
+                    st.info(f"**Note:** Due to election complexity ({len(candidates_list)} candidates), strategies were computed at **{computed_threshold:.1f}%** budget threshold (reduced from your {budget_percent:.0f}% setting).")
+
+                # ========================================
+                # ATTRIBUTE 1: VICTORY GAP & MARGIN OF VICTORY
+                # ========================================
+                st.markdown("## 1. Victory Gap & Competitiveness")
+                st.markdown("""
+                The **Victory Gap** shows how many additional votes (as % of total) each candidate needs to win.
+                The **Margin of Victory** is the smallest gap among non-winners - lower = more competitive.
+                """)
+
+                # Build results table
+                order_data = []
+                non_winner_gaps = []
+                all_selfish = True
+
+                for i, code in enumerate(results):
+                    name = reverse_mapping.get(code, code)
+                    strat_data = strategies.get(code, None)
+
+                    if strat_data is not None and isinstance(strat_data, (list, tuple)) and len(strat_data) > 0:
+                        gap = strat_data[0]
+                        strategy_detail = strat_data[1] if len(strat_data) > 1 else {}
+                    else:
+                        gap = float('inf')
+                        strategy_detail = {}
+
+                    # For multi-winner, first k are all winners regardless of computed gap
+                    if i < k:
+                        category = "Winner"
+                    elif gap != float('inf'):
+                        category = categorize_gap(gap, k)
+                    else:
+                        category = "-"
+
+                    # Check if strategy is selfish
+                    selfish = is_selfish_strategy(strategy_detail, code)
+                    if not selfish and gap > 0:
+                        all_selfish = False
+
+                    # Track non-winner gaps for margin of victory
+                    if gap > 0 and gap != float('inf'):
+                        non_winner_gaps.append(gap)
+
+                    # Format strategy description
+                    # For multi-winner, first k candidates are all winners (gap = 0)
+                    if gap == 0 or i < k:
+                        strategy_desc = "Actual winner" if k > 1 else "Current winner"
+                        strategy_type = "-"
+                    elif gap == float('inf'):
+                        strategy_desc = "Not computed"
+                        strategy_type = "-"
+                    elif strategy_detail and not selfish:
+                        support_parts = []
+                        for cand, votes in strategy_detail.items():
+                            if votes > 0:
+                                cand_name = reverse_mapping.get(cand, cand)
+                                support_parts.append(f"{cand_name}: +{votes:.1f}%")
+                        strategy_desc = ", ".join(support_parts)
+                        strategy_type = "Non-Selfish"
+                    else:
+                        strategy_desc = f"Self-support: +{gap:.2f}%"
+                        strategy_type = "Selfish"
+
+                    # Check if candidate was filtered by threshold
+                    was_filtered = code in candidates_removed
+
+                    order_data.append({
+                        "Rank": i + 1,
+                        "ID": code,
+                        "Candidate": name,
+                        "Victory Gap (%)": gap if gap != float('inf') else None,
+                        "Is Winner": (i < k),  # First k candidates are winners in multi-winner
+                        "Gap Computed": (gap != float('inf')),
+                        "Was Filtered": was_filtered,
+                        "Category": category,
+                        "Strategy Type": strategy_type,
+                        "Required Strategy": strategy_desc,
+                        "Exhaustion (%)": exhausted_pct.get(code, 0)
+                    })
+
+                order_df = pd.DataFrame(order_data)
+
+                # Calculate Margin of Victory
+                margin_of_victory = min(non_winner_gaps) if non_winner_gaps else 0
+
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Margin of Victory", f"{margin_of_victory:.2f}%",
+                              help="Smallest victory gap among non-winners")
+                with col2:
+                    competitiveness = "High" if margin_of_victory < 10 else "Medium" if margin_of_victory < 25 else "Low"
+                    st.metric("Competitiveness", competitiveness)
+
+                # Display table with paper-style coloring
+                def style_victory_table(row):
+                    cat = row['Category']
+                    color = CATEGORY_COLORS.get(cat, {}).get('bg', 'white')
+                    return [f'background-color: {color}'] * len(row)
+
+                display_df = order_df[['Rank', 'ID', 'Candidate', 'Victory Gap (%)', 'Was Filtered', 'Category', 'Required Strategy', 'Exhaustion (%)']].copy()
+
+                # Format victory gap: show ≥ X% for threshold-filtered candidates
+                def format_gap(row):
+                    gap = row['Victory Gap (%)']
+                    if pd.notna(gap):
+                        return f"{gap:.2f}"
+                    elif row['Was Filtered']:
+                        return f"≥ {computed_threshold:.1f}"
+                    else:
+                        return "N/A"
+
+                display_df['Victory Gap (%)'] = display_df.apply(format_gap, axis=1)
+                display_df = display_df.drop(columns=['Was Filtered'])
+                display_df['Exhaustion (%)'] = display_df['Exhaustion (%)'].apply(lambda x: f"{x:.2f}")
+
+                styled_df = display_df.style.apply(style_victory_table, axis=1)
+                st.dataframe(styled_df, use_container_width=True, hide_index=True)
+
+                # Victory Gap Chart
+                chart_data = [d for d in order_data if d['Victory Gap (%)'] is not None]
+                if chart_data:
+                    fig = px.bar(
+                        chart_data,
+                        x="Candidate",
+                        y="Victory Gap (%)",
+                        color="Category",
+                        title="Victory Gap: Additional Votes Needed to Win",
+                        color_discrete_map={k: v['hex'] for k, v in CATEGORY_COLORS.items()}
+                    )
+                    fig.update_layout(xaxis_tickangle=-45)
+                    st.plotly_chart(fig, use_container_width=True)
+
+                # ========================================
+                # ATTRIBUTE 2: BALLOT EXHAUSTION IMPACT
+                # ========================================
+                st.markdown("## 2. Ballot Exhaustion Impact")
+                st.markdown("""
+                **Ballot exhaustion** occurs when a voter's ranked choices are all eliminated.
+                If exhaustion % > victory gap %, completing those ballots *could* change the outcome.
+                """)
+
+                # Analyze exhaustion impact
+                impact_data = []
+                candidates_with_potential = []
+
+                for d in order_data:
+                    code = d['ID']
+                    gap = d['Victory Gap (%)']
+                    exhaust = exhausted_pct.get(code, 0)
+                    name = d['Candidate']
+                    is_winner = d['Is Winner']
+                    gap_computed = d['Gap Computed']
+
+                    if is_winner and (gap == 0 or gap is None):
+                        # Actual winner
+                        impact = "Winner"
+                        could_win = False
+                        gap_display = "0.00"
+                        excess_display = "-"
+                    elif not gap_computed:
+                        # Strategy not computed - use threshold logic
+                        if exhaust < computed_threshold:
+                            # Exhaust is below threshold where we CAN compute, so definitely no impact
+                            impact = "No impact"
+                        else:
+                            # Exhaust is above threshold, we can't say for sure
+                            impact = "Not computed"
+                        could_win = False
+                        gap_display = "N/C"
+                        excess_display = "-"
+                    elif exhaust > gap:
+                        impact = "Potential impact"
+                        could_win = True
+                        gap_display = f"{gap:.2f}"
+                        excess_display = f"{exhaust - gap:.2f}"
+                        candidates_with_potential.append({
+                            'name': name,
+                            'code': code,
+                            'gap': gap,
+                            'exhaust': exhaust,
+                            'excess': exhaust - gap
+                        })
+                    else:
+                        impact = "No impact"
+                        could_win = False
+                        gap_display = f"{gap:.2f}"
+                        excess_display = f"{exhaust - gap:.2f}"
+
+                    impact_data.append({
+                        'Candidate': name,
+                        'Victory Gap (%)': gap_display,
+                        'Exhaustion (%)': f"{exhaust:.2f}",
+                        'Excess': excess_display,
+                        'Impact': impact
+                    })
+
+                impact_df = pd.DataFrame(impact_data)
+
+                def style_impact_table(row):
+                    impact = row['Impact']
+                    if impact == "Winner":
+                        return ['background-color: rgb(189, 223, 167)'] * len(row)
+                    elif impact == "Potential impact":
+                        return ['background-color: rgb(253, 245, 206)'] * len(row)
+                    elif impact == "Not computed":
+                        return ['background-color: rgb(220, 220, 220)'] * len(row)
+                    return [''] * len(row)
+
+                styled_impact = impact_df.style.apply(style_impact_table, axis=1)
+                st.dataframe(styled_impact, use_container_width=True, hide_index=True)
+
+                # Show info about computed threshold if different from user's budget
+                if computed_threshold < budget_percent:
+                    st.info(f"**Note:** Strategies computed at **{computed_threshold:.1f}%** budget threshold (reduced from your {budget_percent:.0f}% setting) due to election complexity. Only candidates with victory gaps below {computed_threshold:.1f}% were analyzed.")
+
+                if candidates_with_potential:
+                    st.warning(f"**{len(candidates_with_potential)} candidate(s)** have exhaustion > victory gap. Completing ballots could theoretically change the outcome.")
+
+                    with st.expander("Detailed Exhaustion Impact Analysis with Probability Models"):
+                        for cand in candidates_with_potential:
+                            st.markdown(f"### {cand['name']} ({cand['code']})")
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric("Victory Gap", f"{cand['gap']:.2f}%")
+                            with col2:
+                                st.metric("Exhaustion at Elimination", f"{cand['exhaust']:.2f}%")
+                            with col3:
+                                st.metric("Excess Available", f"{cand['excess']:.2f}%")
+
+                            # Calculate required preference percentage
+                            if cand['exhaust'] > 0:
+                                required_net_advantage = (cand['gap'] / cand['exhaust']) * 100
+                                required_pref_pct = (1 + required_net_advantage / 100) / 2 * 100
+
+                                st.markdown(f"**Required Preference:** {required_pref_pct:.1f}% of exhausted voters must prefer this candidate over the winner")
+
+                                if PROB_MODELS_AVAILABLE:
+                                    # ====== SIX PROBABILITY MODELS FROM PAPER ======
+                                    st.markdown("#### Probability Models (Chance of Winning via Ballot Completion)")
+                                    st.markdown("""
+**Beta Distribution Models:**
+- **Gap-Based Beta:** Uses a Beta distribution parameterized solely by the victory gap. Does not use observed ballot data.
+- **Similarity Beta:** Groups exhausted ballots by first preference; estimates B>A vs A>B rates from non-exhausted ballots with the same first preference.
+- **Prior-Posterior Beta:** Bayesian update combining Gap-Based Beta prior with observed first-preference-conditioned rates.
+
+**Bootstrap Simulation Models:**
+- **Similarity Bootstrap:** For each exhausted ballot, samples completions from non-exhausted ballots sharing the same first preference.
+- **Rank-Restricted Bootstrap:** Like Similarity Bootstrap, but only completes ballots with room for additional rankings (e.g., <5 ranks in NYC).
+- **Unconditional Bootstrap:** Samples completions from all non-exhausted ballots regardless of first preference.
+                                    """)
+
+                                    # Option for full analysis
+                                    full_analysis = st.checkbox(
+                                        "Run full bootstrap analysis (1000 iterations - slower but more accurate)",
+                                        key=f"full_{cand['code']}"
+                                    )
+                                    n_bootstrap = 1000 if full_analysis else 200
+
+                                    gap = cand['gap']
+                                    exhaust = cand['exhaust']
+                                    winner_code = results[0]  # Winner is 'A'
+                                    cand_code = cand['code']
+                                    candidates_list_for_model = list(set(results))
+
+                                    # Compute exhausted_ballots: ballots that don't rank both winner and candidate
+                                    exhausted_ballots_for_model = {
+                                        ballot: count for ballot, count in ballot_counts.items()
+                                        if winner_code not in ballot and cand_code not in ballot
+                                    }
+
+                                    with st.spinner(f"Computing probability models ({n_bootstrap} bootstrap iterations)..."):
+                                        # 1. Gap-Based Beta (fast)
+                                        gap_based_beta = beta_probability(required_pref_pct, gap) * 100
+
+                                        # 2. Similarity Beta (fast)
+                                        similarity_beta = direct_posterior_beta(
+                                            required_pref_pct, ballot_counts, candidates_list_for_model,
+                                            exhausted_ballots_for_model, gap
+                                        ) * 100
+
+                                        # 3. Prior-Posterior Beta (fast)
+                                        prior_post_beta = prior_posterior_beta(
+                                            required_pref_pct, ballot_counts, candidates_list_for_model,
+                                            exhausted_ballots_for_model, gap
+                                        ) * 100
+
+                                        # 4. Similarity Bootstrap (uses iterations)
+                                        sim_bootstrap, sim_ci, _ = category_based_bootstrap(
+                                            ballot_counts, candidates_list_for_model, exhausted_ballots_for_model,
+                                            gap_to_win_pct=gap, exhaust_pct=exhaust,
+                                            required_preference_pct=required_pref_pct, n_bootstrap=n_bootstrap
+                                        )
+                                        sim_bootstrap *= 100
+
+                                        # 5. Rank-Restricted Bootstrap (uses iterations)
+                                        rank_bootstrap, rank_ci, _ = limited_ranking_bootstrap(
+                                            ballot_counts, candidates_list_for_model, exhausted_ballots_for_model,
+                                            gap_to_win_pct=gap, exhaust_pct=exhaust,
+                                            required_preference_pct=required_pref_pct, n_bootstrap=n_bootstrap,
+                                            max_rankings=6
+                                        )
+                                        rank_bootstrap *= 100
+
+                                        # 6. Unconditional Bootstrap (uses iterations)
+                                        uncond_bootstrap, uncond_ci, _ = unconditional_bootstrap(
+                                            ballot_counts, candidates_list_for_model, exhausted_ballots_for_model,
+                                            gap_to_win_pct=gap, exhaust_pct=exhaust,
+                                            required_preference_pct=required_pref_pct, n_bootstrap=n_bootstrap
+                                        )
+                                        uncond_bootstrap *= 100
+
+                                    # Combined weighted probability (emphasizing empirical methods)
+                                    combined_prob = (
+                                        0.10 * gap_based_beta +
+                                        0.15 * similarity_beta +
+                                        0.15 * prior_post_beta +
+                                        0.25 * sim_bootstrap +
+                                        0.20 * rank_bootstrap +
+                                        0.15 * uncond_bootstrap
+                                    )
+
+                                    # Display probability results with paper model names
+                                    prob_models = [
+                                        ("Gap-Based Beta", gap_based_beta,
+                                         f"Beta distribution calibrated to victory gap ({gap:.1f}%). Larger gaps shift distribution toward the leader."),
+                                        ("Similarity Beta", similarity_beta,
+                                         "Uses observed B>A vs A>B preference ratios by first-preference category to fit Beta parameters."),
+                                        ("Prior-Posterior Beta", prior_post_beta,
+                                         "Bayesian update: combines gap-based prior with observed preference evidence."),
+                                        ("Similarity Bootstrap", sim_bootstrap,
+                                         f"Bootstrap ({n_bootstrap} iterations) grouping exhausted ballots by first preference, sampling completions from category-specific ratios."),
+                                        ("Rank-Restricted Bootstrap", rank_bootstrap,
+                                         f"Like Similarity Bootstrap but respects ranking limits (max 6). More conservative estimate."),
+                                        ("Unconditional Bootstrap", uncond_bootstrap,
+                                         f"Bootstrap ({n_bootstrap} iterations) assuming random completion without first-preference conditioning."),
+                                    ]
+
+                                    # Summary table
+                                    st.markdown("| Model | Probability |")
+                                    st.markdown("|:------|----------:|")
+                                    for model_name, prob, _ in prob_models:
+                                        st.markdown(f"| {model_name} | {prob:.1f}% |")
+                                    st.markdown(f"| **Combined** | **{combined_prob:.1f}%** |")
+
+                                    # Show model descriptions with toggle checkbox
+                                    if st.checkbox(f"📖 Show model descriptions for {cand['name']}", key=f"models_{cand['code']}"):
+                                        for model_name, prob, description in prob_models:
+                                            st.markdown(f"**{model_name}** ({prob:.1f}%)")
+                                            st.caption(description)
+                                            st.markdown("")
+                                        st.markdown(f"**Combined** ({combined_prob:.1f}%)")
+                                        st.caption("Weighted average across all six models from the paper, emphasizing bootstrap methods.")
+
+                                    # Interpretation
+                                    if combined_prob >= 40:
+                                        st.success(f"**High probability ({combined_prob:.0f}%)** - Completing exhausted ballots could plausibly change the outcome")
+                                    elif combined_prob >= 15:
+                                        st.warning(f"**Moderate probability ({combined_prob:.0f}%)** - Outcome change possible but not likely")
+                                    else:
+                                        st.info(f"**Low probability ({combined_prob:.0f}%)** - Outcome change unlikely even with ballot completion")
+
+                                elif not PROB_MODELS_AVAILABLE:
+                                    st.warning("Probability models not available. Install ballot_exhaustion module.")
+
+                            st.markdown("---")
+                else:
+                    st.success("**No candidates** have exhaustion rates exceeding their victory gaps. The election outcome is robust to ballot completion.")
+
+                # Exhaustion chart
+                col1, col2 = st.columns(2)
+                with col1:
+                    exhaust_chart = []
+                    for code in reversed(results):
+                        name = reverse_mapping.get(code, code)
+                        pct = exhausted_pct.get(code, 0)
+                        exhaust_chart.append({"Eliminated": name, "Cumulative Exhaustion (%)": pct})
+
+                    fig = px.area(exhaust_chart, x="Eliminated", y="Cumulative Exhaustion (%)",
+                                  title="Ballot Exhaustion Over Rounds")
+                    fig.update_traces(fill='tozeroy', line_color='#e74c3c')
+                    st.plotly_chart(fig, use_container_width=True)
+
+                with col2:
+                    # Gap vs Exhaustion scatter
+                    scatter_data = [d for d in order_data if d['Victory Gap (%)'] is not None and d['Victory Gap (%)'] > 0]
+                    if scatter_data:
+                        fig = px.scatter(
+                            scatter_data,
+                            x="Victory Gap (%)",
+                            y="Exhaustion (%)",
+                            text="ID",
+                            title="Victory Gap vs Exhaustion at Elimination",
+                            color="Category",
+                            color_discrete_map={k: v['hex'] for k, v in CATEGORY_COLORS.items()}
+                        )
+                        # Add diagonal line (exhaustion = gap)
+                        max_val = max(max([d['Victory Gap (%)'] for d in scatter_data]), max([d['Exhaustion (%)'] for d in scatter_data]))
+                        fig.add_trace(go.Scatter(x=[0, max_val], y=[0, max_val], mode='lines',
+                                                  line=dict(dash='dash', color='gray'), name='Exhaust = Gap'))
+                        fig.update_traces(textposition='top center')
+                        st.plotly_chart(fig, use_container_width=True)
+
+                # ========================================
+                # ATTRIBUTE 3: STRATEGIC COMPLEXITY
+                # ========================================
+                st.markdown("## 3. Strategic Complexity")
+                st.markdown("""
+                **Selfish Strategy**: Optimal path to victory is simply adding votes for oneself.
+                **Non-Selfish Strategy**: Optimal strategy requires supporting other candidates (spoiler effects).
+                """)
+
+                strategy_types = [d['Strategy Type'] for d in order_data if d['Strategy Type'] not in ['-']]
+                selfish_count = strategy_types.count('Selfish')
+                non_selfish_count = strategy_types.count('Non-Selfish')
+
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Selfish Strategies", selfish_count)
+                with col2:
+                    st.metric("Non-Selfish Strategies", non_selfish_count)
+                with col3:
+                    complexity = "Simple" if all_selfish else "Complex"
+                    st.metric("Strategic Complexity", complexity)
+
+                if all_selfish:
+                    st.success(f"**All optimal strategies are selfish** (self-support only) at {budget_percent}% allowance. This election exhibits plurality-like strategic dynamics.")
+                else:
+                    st.warning(f"**Some candidates have non-selfish optimal strategies** at {budget_percent}% allowance. Supporting rivals (spoiler effects) could be advantageous.")
+
+                # ========================================
+                # ATTRIBUTE 4: PREFERENCE ORDER ALIGNMENT
+                # ========================================
+                st.markdown("## 4. Preference Order Alignment")
+                st.markdown("""
+                Does the **Social Choice Order** (elimination sequence) match the **Victory Gap Order** (sorted by closeness to winning)?
+                **Match** = RCV results are transparent. **No Match** = formal results may obscure true competitiveness.
+                """)
+
+                matches, victory_gap_order, mismatches = compute_preference_order_alignment(results, strategies)
+
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown("**Social Choice Order** (actual RCV result):")
+                    sco_names = [f"{i+1}. {reverse_mapping.get(c, c)}" for i, c in enumerate(results)]
+                    st.write(" → ".join(sco_names[:5]) + ("..." if len(sco_names) > 5 else ""))
+
+                with col2:
+                    st.markdown("**Victory Gap Order** (sorted by gap):")
+                    vgo_names = [f"{i+1}. {reverse_mapping.get(c, c)}" for i, c in enumerate(victory_gap_order)]
+                    st.write(" → ".join(vgo_names[:5]) + ("..." if len(vgo_names) > 5 else ""))
+
+                if matches:
+                    st.success("**Perfect Match!** The elimination order reflects true competitive dynamics. RCV results are transparent.")
+                else:
+                    st.warning(f"**No Match** at {len(mismatches)} position(s). The elimination sequence differs from victory gap ranking.")
+                    with st.expander("View Mismatches"):
+                        for pos, sco, vgo in mismatches:
+                            sco_name = reverse_mapping.get(sco, sco)
+                            vgo_name = reverse_mapping.get(vgo, vgo)
+                            st.write(f"Position {pos}: SCO has **{sco_name}**, VGO has **{vgo_name}**")
+
+                # ========================================
+                # SUMMARY INSIGHTS
+                # ========================================
+                st.markdown("## Summary: Key Insights")
+
+                insights = []
+
+                # Competitiveness insight
+                if margin_of_victory < 10:
+                    insights.append(f"**Highly competitive election** - margin of victory is only {margin_of_victory:.2f}%")
+                elif margin_of_victory < 25:
+                    insights.append(f"**Moderately competitive election** - margin of victory is {margin_of_victory:.2f}%")
+                else:
+                    insights.append(f"**Decisive victory** - margin of victory is {margin_of_victory:.2f}%")
+
+                # Exhaustion insight
+                if candidates_with_potential:
+                    insights.append(f"**Exhaustion could matter** - {len(candidates_with_potential)} candidate(s) have exhaust > gap")
+                else:
+                    insights.append("**Robust to exhaustion** - completing ballots unlikely to change outcome")
+
+                # Strategy insight
+                if all_selfish:
+                    insights.append("**Simple strategic dynamics** - all optimal strategies are self-support")
+                else:
+                    insights.append("**Complex strategic dynamics** - some candidates benefit from supporting rivals")
+
+                # Alignment insight
+                if matches:
+                    insights.append("**Transparent results** - elimination order matches competitiveness ranking")
+                else:
+                    insights.append("**Some opacity** - elimination order differs from competitiveness ranking")
+
+                for insight in insights:
+                    st.markdown(f"- {insight}")
+
+                # ========================================
+                # RAW DATA & EXPORT
+                # ========================================
+                with st.expander("Raw Analysis Data"):
+                    st.json({
+                        "num_candidates": analysis_result.get("num_candidates"),
+                        "total_votes": analysis_result.get("total_votes"),
+                        "quota": analysis_result.get("quota"),
+                        "margin_of_victory": margin_of_victory,
+                        "overall_winning_order": results,
+                        "candidates_removed": candidates_removed,
+                        "strategies": {k: v for k, v in strategies.items()}
+                    })
+
+                st.markdown("## Export Results")
+                col1, col2 = st.columns(2)
+                with col1:
+                    csv_data = display_df.to_csv(index=False)
+                    st.download_button("Download Victory Gap Table (CSV)", data=csv_data,
+                                       file_name=f"rcv_victory_gap_{file_name.replace('.csv', '')}.csv",
+                                       mime="text/csv")
+                with col2:
+                    impact_csv = impact_df.to_csv(index=False)
+                    st.download_button("Download Exhaustion Impact (CSV)", data=impact_csv,
+                                       file_name=f"rcv_exhaustion_{file_name.replace('.csv', '')}.csv",
+                                       mime="text/csv")
+
+            except Exception as e:
+                st.error(f"Analysis failed: {e}")
+                with st.expander("Error Details"):
+                    st.exception(e)
+
+    except Exception as e:
+        st.error(f"Failed to load file: {e}")
+        with st.expander("Error Details"):
+            st.exception(e)
+
+else:
+    # Instructions
+    st.markdown("""
+    ## Getting Started
+
+    1. **Upload** your election CSV file
+    2. **Configure** settings in the sidebar
+    3. **Click** "Run Analysis" to see results
+
+    ### What You'll Get
+
+    Based on the research paper *"Simpler Than You Think: The Practical Dynamics of RCV"*:
+
+    1. **Victory Gap & Margin of Victory** - How close is each candidate to winning?
+    2. **Ballot Exhaustion Impact** - Could completing exhausted ballots change the outcome?
+    3. **Strategic Complexity** - Are optimal strategies simple (self-support) or complex (support rivals)?
+    4. **Preference Order Alignment** - Does elimination order reflect true competitiveness?
+
+    ### Data Format
+
+    Your CSV should have columns like:
+    - `Choice_1, Choice_2, Choice_3, ...` (preferred)
+    - `rank1, rank2, rank3, ...` (also supported)
+    """)
+
+# Footer
+st.markdown("---")

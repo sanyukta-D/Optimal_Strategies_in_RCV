@@ -18,7 +18,9 @@ eggs/
 .installed.cfg
 *.egg
 venv/
+.venv/
 ENV/
+env/
 
 # Jupyter
 .ipynb_checkpoints/

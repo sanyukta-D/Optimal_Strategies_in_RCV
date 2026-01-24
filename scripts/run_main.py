@@ -1,5 +1,11 @@
-from case_studies.portland.load_district_data import district_data
-from case_studies.republican_primary.load_data import election_data
+import sys
+from pathlib import Path
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+#from case_studies.portland.load_district_data import district_data
+#from case_studies.republican_primary.load_data import election_data
 from rcv_strategies.core.stv_irv import STV_optimal_result_simple, IRV_ballot_exhaust
 from rcv_strategies.utils import case_study_helpers
 from rcv_strategies.core import candidate_removal
@@ -13,8 +19,10 @@ from string import ascii_uppercase
 
 
 ### NEW YORK CITY RCV elections case study ####
-input_file = "NewYorkCity_06222021_DEMCouncilMember23rdCouncilDistrict.csv"
-full_path = os.path.join("Case_Studies/NewYork_City_RCV/nyc_files", input_file)
+input_file = "NewYorkCity_06222021_DEMCouncilMember7thCouncilDistrict.csv"
+# Use relative path from project root
+project_root = Path(__file__).parent.parent
+full_path = project_root / "case_studies" / "nyc" / "data" / input_file
 k = 1
 df, processed_file = process_single_file(full_path)
 
@@ -39,14 +47,16 @@ candidates = list(candidates_mapping.values())
 print("Number of candidates: ", len(candidates))
 rt, dt, collection = STV_optimal_result_simple(candidates, ballot_counts, k, sum(ballot_counts.values())/(k+1))
 results, subresults = utils.return_main_sub(rt)
-elim_cands = results[-3:]
+elim_cands = results[-6:]
 zeros , c_l = candidate_removal.predict_losses(ballot_counts, candidates, k, 11608, 1160)
 
 # exhausted_ballots_list, exhausted_ballots_dict = IRV_ballot_exhaust(candidates, ballot_counts)
-
+# ballot_counts['C'] = ballot_counts['C'] + 1490
+# rt, dt, collection = STV_optimal_result_simple(candidates, ballot_counts, k, sum(ballot_counts.values())/(k+1))
+# results, subresults = utils.return_main_sub(rt)
+# print(results)   
 # exhausted_ballots_dict_percent = {key: round(value/sum(ballot_counts.values())*100, 3) for key, value in exhausted_ballots_dict.items()}
 # print("Exhausted ballots dictionary percentage: ", exhausted_ballots_dict_percent)
-
 
 
 process_ballot_counts_post_elim(ballot_counts,
@@ -54,7 +64,7 @@ process_ballot_counts_post_elim(ballot_counts,
             results,
             elim_cands,
             check_strats=True,
-            budget_percent=40,
+            budget_percent=18,
             check_removal_here=True,
             keep_at_least=10, zeros= 0, rigorous_check=True
         )
