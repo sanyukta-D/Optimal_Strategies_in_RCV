@@ -315,10 +315,10 @@ if use_example and uploaded_file is None:
         "Burlington 2009 Mayor": ("Burlington_20090303_Mayor.csv", 1, 10.0, 7),
     }
 
-    for name, (filename, k, budget, keep) in single_winner_files.items():
+    for name, (filename, ex_k, ex_budget, ex_keep) in single_winner_files.items():
         filepath = examples_path / filename
         if filepath.exists():
-            curated_examples[name] = (filepath, k, budget, keep)
+            curated_examples[name] = (filepath, ex_k, ex_budget, ex_keep)
 
     # === MULTI-WINNER ELECTIONS (Portland k=3) ===
     portland_path = base_path / "portland" / "data"
@@ -329,10 +329,10 @@ if use_example and uploaded_file is None:
         "Portland 2024 District 4 (k=3)": ("Dis_4/Election_results_dis4.csv", 3, 9.5, 8),
     }
 
-    for name, (rel_path, k, budget, keep) in portland_configs.items():
+    for name, (rel_path, ex_k, ex_budget, ex_keep) in portland_configs.items():
         filepath = portland_path / rel_path
         if filepath.exists():
-            curated_examples[name] = (filepath, k, budget, keep)
+            curated_examples[name] = (filepath, ex_k, ex_budget, ex_keep)
 
     if curated_examples:
         # Group examples by category for better UX
@@ -377,7 +377,6 @@ if uploaded_file is not None:
         data_format = detect_format(df)
         if data_format == 'rank':
             df = convert_rank_to_choice(df)
-            st.info("Converted rank format to standard Choice format")
         elif data_format is None:
             st.error("Could not detect data format.")
             st.markdown(f"""
