@@ -182,7 +182,7 @@ def STV_ballot_exhaust(cands, ballot_counts, k, Q):
                                 new_ballots[new_ballot] = new_ballots.get(new_ballot, 0) + count
                         else:
                             # Keep ballot as is
-                            new_ballots[ballot] = new_ballots.get(new_ballot, 0) + count
+                            new_ballots[ballot] = new_ballots.get(ballot, 0) + count
 
                 # Distribute surplus votes proportionally
                 surplus = votes - Q
