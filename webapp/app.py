@@ -218,34 +218,26 @@ def compute_preference_order_alignment(results, strategies):
 with st.sidebar:
     st.markdown("## Settings")
 
-    # Initialize sidebar widget values in session_state if not present
-    if 'sidebar_k' not in st.session_state:
-        st.session_state['sidebar_k'] = 1
-    if 'sidebar_budget' not in st.session_state:
-        st.session_state['sidebar_budget'] = 10.0
-    if 'sidebar_keep' not in st.session_state:
-        st.session_state['sidebar_keep'] = 7
-
     k = st.number_input(
         "Number of Winners",
         min_value=1, max_value=10,
-        key='sidebar_k',
+        value=st.session_state.get('pending_k', 1),
         help="Set to 1 for single-winner elections (Mayor, Governor)"
     )
 
     budget_percent = st.slider(
         "Budget / Allowance (% of total votes)",
         0.0, 100.0,
-        key='sidebar_budget',
+        value=st.session_state.get('pending_budget', 10.0),
         step=0.5,
-        help="Maximum additional votes to consider for strategy analysis (algorithmic traceability threshold)"
+        help="Maximum additional votes to consider for strategy analysis (algorithmic tradeability threshold)"
     )
 
     with st.expander("Advanced Options"):
         keep_at_least = st.slider(
             "Keep at least (candidates)",
             3, 20,
-            key='sidebar_keep',
+            value=st.session_state.get('pending_keep', 7),
             help="Minimum candidates to retain after removal. Lower = faster. Portland uses 7-8 for k=3."
         )
         rigorous_check = st.checkbox("Rigorous candidate removal", value=True)
@@ -355,15 +347,15 @@ if use_example and uploaded_file is None:
         filepath, rec_k, rec_budget, rec_keep = curated_examples[selected_example]
         uploaded_file = filepath
 
-        # Detect example change and force sidebar widget updates
+        # Detect example change and update pending values for sidebar
         prev_example = st.session_state.get('_prev_example', None)
         if prev_example != selected_example:
-            # Example changed - update widget values directly
+            # Example changed - set pending values and rerun
             st.session_state['_prev_example'] = selected_example
-            st.session_state['sidebar_k'] = rec_k
-            st.session_state['sidebar_budget'] = rec_budget
-            st.session_state['sidebar_keep'] = rec_keep
-            st.rerun()  # Force rerun to update sidebar
+            st.session_state['pending_k'] = rec_k
+            st.session_state['pending_budget'] = rec_budget
+            st.session_state['pending_keep'] = rec_keep
+            st.rerun()  # Force rerun to update sidebar with new values
 
         if rec_k > 1:
             st.info(f"💡 **Recommended settings:** k={rec_k}, Budget={rec_budget}%, Keep at least={rec_keep}")
