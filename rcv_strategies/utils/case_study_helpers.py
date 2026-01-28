@@ -250,15 +250,38 @@ def convert_combination_strats_to_candidate_strats(strats_frame, k, results):
         # For single-winner, the format is already per-candidate
         return strats_frame
 
+    # The original winners are ALWAYS results[:k] from the full election
+    # These are the ACTUAL winners we want to preserve with gap=0
     original_winners = set(results[:k])
+
+    # Find the cost=0 combination in strats_frame (winners in the reduced state)
+    # This may differ from original_winners if candidate removal changed vote distributions
+    reduced_winners = None
+    for combo_key, value in strats_frame.items():
+        if isinstance(value, (list, tuple)) and len(value) >= 1:
+            if value[0] == 0:
+                reduced_winners = set(combo_key)
+                break
+
     candidate_strats = {}
 
-    # Original winners get gap = 0
+    # Original winners (from full election) get gap = 0
     for winner in original_winners:
         candidate_strats[winner] = [0.0, {}]
 
+    # Get all candidates that appear in any combination in strats_frame
+    all_candidates_in_strats = set()
+    for combo_key in strats_frame.keys():
+        all_candidates_in_strats.update(combo_key)
+
     # For non-winners, find minimum cost to become a winner
-    for candidate in results[k:]:
+    # Iterate through candidates in results order, but only if they appear in strats_frame
+    for candidate in results:
+        if candidate in original_winners:
+            continue  # Already handled as winner with gap=0
+        if candidate not in all_candidates_in_strats:
+            continue  # Not in reduced set, skip
+
         min_cost = float('inf')
         best_additions = {}
 
@@ -271,20 +294,34 @@ def convert_combination_strats_to_candidate_strats(strats_frame, k, results):
             else:
                 continue
 
-            if candidate in combo_key and cost < min_cost:
+            combo_set = set(combo_key)
+
+            # Skip if this is the original winners combination
+            if combo_set == original_winners:
+                continue
+
+            # Skip if this is the reduced winners combination with cost=0
+            # This prevents non-winners from getting 0% gap due to reduced state artifacts
+            if reduced_winners and combo_set == reduced_winners and cost == 0:
+                continue
+
+            # For non-winners from the ORIGINAL election:
+            # Only accept cost > 0 since they need votes to win
+            if candidate in combo_key and cost > 0 and cost < min_cost:
                 min_cost = cost
                 # Convert additions to dict format if needed
                 if isinstance(additions, dict):
                     best_additions = additions
                 elif isinstance(additions, (list, tuple)):
                     # If it's a list, convert to dict with candidate as key
-                    best_additions = {candidate: min_cost} if min_cost > 0 else {}
+                    best_additions = {candidate: min_cost}
                 else:
-                    best_additions = {candidate: min_cost} if min_cost > 0 else {}
+                    best_additions = {candidate: min_cost}
 
         if min_cost != float('inf'):
             candidate_strats[candidate] = [min_cost, best_additions]
-        # If no combination found, candidate is beyond the budget threshold
+        # If no valid combination found (all had cost=0 or cost=inf),
+        # candidate gap cannot be reliably computed from this reduced state
 
     return candidate_strats
     
@@ -370,10 +407,19 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
         candidates_reduced, group_remaining, stop = remove_irrelevent(
             ballot_counts, rt, results[:keep_at_least], budget, ''.join(results), rigorous_check
         )
-        if stop:
-            candidates_removed = group_remaining
-            candidates_retained = candidates_reduced
+        if stop and len(candidates_reduced) == len(results[:keep_at_least]):
+            # Removal verified exactly keep_at_least candidates at this budget
+            # This budget is sufficient - proceed with strategy computation
+            candidates_retained = results[:keep_at_least]
+            candidates_removed = [c for c in results if c not in candidates_retained]
+            group_remaining = ''.join(candidates_removed)
+        elif stop:
+            # Removal verified fewer candidates than keep_at_least
+            # This budget doesn't support keep_at_least - trigger divide-and-conquer
+            candidates_removed = []
+            candidates_retained = []  # Empty signals to skip strategy computation
         else:
+            # Removal failed entirely
             candidates_removed = []
             candidates_retained = candidates
 
@@ -382,13 +428,13 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
 
     # Check strategies if requested
     if len(candidates) > 2 and check_strats:
-        if len(candidates_retained) == 1:
-            # Only winner remains after removal - this is too aggressive for strategy computation
+        if len(candidates_retained) <= 1:
+            # Empty or single candidate - budget doesn't support keep_at_least
             # Return empty strategies so webapp's divide-and-conquer can try a lower budget
             strats_frame = {}
             strats_frame_percent = {}
-        elif len(candidates_retained) > 1 and len(candidates_retained) < len(candidates) - 2:
-            # Filter ballots to only include retained candidates
+        elif len(candidates_retained) > 1 and len(candidates_retained) < len(candidates):
+            # Some candidates were removed - filter ballots to only include retained candidates
             filtered_data = {}
             elim_strings = ''.join(candidates_removed) if isinstance(candidates_removed, str) else ''.join(candidates_removed)
             for key, value in ballot_counts.items():
@@ -400,11 +446,12 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
 
             # ============================================================
             # MULTI-WINNER EARLY WINNER HANDLING (from process_bootstrap_samples)
+            # If a candidate exceeds quota after removal, they win during elimination.
+            # We need to use the ballot state AFTER that win (with surplus transfers).
             # ============================================================
             early_winner_handled = False
 
             if k > 1:  # Multi-winner election
-                # Check for immediate winners (candidates that exceed quota after removal)
                 for cand_winner in candidates_retained:
                     if agg_v_dict.get(cand_winner, 0) >= Q:
                         # This candidate wins during elimination of irrelevant candidates
@@ -415,15 +462,18 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
 
                         if removal_permitted:
                             # Use ballot state from the correct round in the collection
+                            # This accounts for surplus transfers from the early winner
                             small_election_number = len(candidates) - len(candidates_retained)
                             if small_election_number < len(collection):
                                 ballot_counts_short = collection[small_election_number][0]
                                 test = [rt[i][0] for i in range(small_election_number, len(rt))]
                                 ordered_test = sorted(test, key=lambda x: results.index(x))
-                                strats_frame = reach_any_winners_campaign(
+                                strats_frame = reach_any_winners_campaign_parallel(
                                     ordered_test, k, Q, ballot_counts_short, budget,
-                                    allowed_length=allowed_length
+                                    c_l=[], zeros=0, allowed_length=allowed_length
                                 )
+                                # Update candidates_retained to match what was used for strategies
+                                candidates_retained = ordered_test
                                 early_winner_handled = True
                                 break
 
@@ -431,10 +481,12 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
             if not early_winner_handled:
                 if all(agg_v_dict.get(cand, 0) < Q for cand in candidates_retained):
                     # No immediate winners, compute strategies for all retained candidates
-                    strats_frame = reach_any_winners_campaign(
+                    strats_frame = reach_any_winners_campaign_parallel(
                         candidates_retained, k, Q, filtered_data, budget,
-                        allowed_length=allowed_length
+                        c_l=[], zeros=0, allowed_length=allowed_length
                     )
+                # If early winner exists but permit_STV_removal failed, leave strats_frame empty
+                # This signals to webapp's divide-and-conquer to try a lower budget
 
             # Convert combination-based strategies to per-candidate strategies for multi-winner
             if k > 1 and strats_frame:
@@ -453,10 +505,10 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
                     strats_frame = convert_combination_strats_to_candidate_strats(strats_frame, k, results)
                 strats_frame_percent = convert_to_percentage(strats_frame, total_votes)
             elif k > 1 and len(candidates) <= 12:
-                # Multi-winner with moderate candidates - try without parallel
-                strats_frame = reach_any_winners_campaign(
+                # Multi-winner with moderate candidates - use parallel
+                strats_frame = reach_any_winners_campaign_parallel(
                     elec_cands, k, Q, filtered_data, budget,
-                    allowed_length=allowed_length
+                    c_l=[], zeros=0, allowed_length=allowed_length
                 )
                 # Convert for multi-winner
                 if strats_frame:

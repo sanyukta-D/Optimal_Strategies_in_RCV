@@ -100,6 +100,7 @@ CATEGORY_COLORS = {
     "Competitive": {"bg": "rgb(253, 231, 208)", "hex": "#fde7d0"},      # Soft peach
     "Distant": {"bg": "rgb(248, 218, 205)", "hex": "#f8dacd"},          # Light salmon
     "Far Behind": {"bg": "rgb(242, 201, 198)", "hex": "#f2c9c6"},       # Muted red/pink
+    "Beyond Threshold": {"bg": "rgb(220, 220, 220)", "hex": "#dcdcdc"}, # Light gray - strategy not computed
 }
 
 def detect_format(df):
@@ -128,8 +129,20 @@ def get_candidates_from_df(df):
         all_candidates.update(candidates)
 
     exclude = {'', 'skipped', 'overvote', 'undervote', 'writein', 'exhausted', 'nan', 'none'}
+
+    def should_exclude(name):
+        """Check if candidate should be excluded (write-ins, special values, etc.)"""
+        name_lower = str(name).strip().lower()
+        # Exclude exact matches
+        if name_lower in exclude:
+            return True
+        # Exclude write-in candidates (various formats)
+        if 'write-in' in name_lower or 'write in' in name_lower or 'writein' in name_lower:
+            return True
+        return False
+
     candidates = [c for c in all_candidates
-                  if str(c).strip().lower() not in exclude
+                  if not should_exclude(c)
                   and pd.notna(c)
                   and str(c).strip() != '']
 
@@ -205,23 +218,28 @@ def compute_preference_order_alignment(results, strategies):
 with st.sidebar:
     st.markdown("## Settings")
 
+    # Use recommended values from session_state if available (set by example selection)
+    default_k = st.session_state.get('recommended_k', 1)
+    default_budget = st.session_state.get('recommended_budget', 10.0)
+    default_keep = st.session_state.get('recommended_keep_at_least', 7)
+
     k = st.number_input(
         "Number of Winners",
-        min_value=1, max_value=10, value=1,
+        min_value=1, max_value=10, value=default_k,
         help="Set to 1 for single-winner elections (Mayor, Governor)"
     )
 
     budget_percent = st.slider(
         "Budget / Allowance (% of total votes)",
-        0.0, 100.0, 10.0, 0.5,
+        0.0, 100.0, default_budget, 0.5,
         help="Maximum additional votes to consider for strategy analysis (algorithmic traceability threshold)"
     )
 
     with st.expander("Advanced Options"):
         keep_at_least = st.slider(
             "Keep at least (candidates)",
-            3, 15, 8,
-            help="Minimum candidates to retain after removal"
+            3, 20, default_keep,
+            help="Minimum candidates to retain after removal. Lower = faster. Portland uses 7-8 for k=3."
         )
         rigorous_check = st.checkbox("Rigorous candidate removal", value=True)
         check_strategies = st.checkbox("Compute optimal strategies", value=True)
@@ -273,41 +291,78 @@ with col2:
         **Notes:**
         - Extra columns (RowNumber, ID) are ignored
         - Values like 'skipped', 'overvote', 'undervote', 'writein' are excluded
+
+        **Have raw Cast Vote Records (CVR)?**
+        Use [FairVote's RCV Cruncher](https://github.com/fairvotereform/rcv_cruncher)
+        to parse and convert CVR files. Its default "rank" format output
+        (`rank1, rank2, ...`) is directly compatible with this tool.
         """)
     use_example = st.checkbox("Use example data")
 
 # Load example data if requested
 if use_example and uploaded_file is None:
     base_path = Path(__file__).parent.parent / "case_studies"
+    dataverse_path = Path(__file__).parent.parent / "dataverse_files (1)"
 
-    # Collect examples from multiple sources
-    example_options = {}
+    # Curated collection of interesting elections with metadata
+    # Format: display_name -> (file_path, k, budget, keep_at_least)
+    curated_examples = {}
 
-    # Alaska examples (single-winner)
-    alaska_path = base_path / "alaska" / "data"
-    if alaska_path.exists():
-        for f in list(alaska_path.glob("*.csv"))[:5]:
-            example_options[f"Alaska: {f.stem}"] = f
+    # === HIGH-PROFILE SINGLE-WINNER ELECTIONS ===
+    single_winner_files = {
+        "NYC 2025 Mayoral Primary (DEM)": ("NewYorkCity_20250624_DEMMayorCitywide.csv", 1, 10.0, 7),
+        "NYC 2021 Mayoral Primary (DEM)": ("NewYorkCity_20210622_DEM_Mayor.csv", 1, 10.0, 7),
+        "Alaska 2024 US House": ("Alaska_20241105_US_House.csv", 1, 10.0, 7),
+        "San Francisco 2024 Mayor": ("SanFrancisco_20241105_Mayor.csv", 1, 10.0, 7),
+        "Oakland 2022 Mayor": ("Oakland_20221108_Mayor.csv", 1, 10.0, 7),
+        "Minneapolis 2021 Mayor": ("Minneapolis_20211102_Mayor.csv", 1, 10.0, 7),
+        "Burlington 2009 Mayor": ("Burlington_20090303_Mayor.csv", 1, 10.0, 7),
+        "Maine 2018 Congressional District 2": ("Maine_20181106_CongressionalDistrict2.csv", 1, 10.0, 7),
+        "San Francisco 2011 Mayor": ("SanFrancisco_20111108_Mayor.csv", 1, 10.0, 7),
+        "Oakland 2010 Mayor": ("Oakland_20101102_Mayor.csv", 1, 10.0, 7),
+    }
 
-    # Portland examples (multi-winner k=3)
+    for name, (filename, k, budget, keep) in single_winner_files.items():
+        filepath = dataverse_path / filename
+        if filepath.exists():
+            curated_examples[name] = (filepath, k, budget, keep)
+
+    # === MULTI-WINNER ELECTIONS (Portland k=3) ===
     portland_path = base_path / "portland" / "data"
-    if portland_path.exists():
-        for i in range(1, 5):
-            dis_path = portland_path / f"Dis_{i}" / f"Election_results_dis{i}.csv"
-            if dis_path.exists():
-                example_options[f"Portland District {i} (k=3)"] = dis_path
+    portland_configs = {
+        "Portland 2024 District 1 (k=3)": ("Dis_1/Election_results_dis1.csv", 3, 4.5, 8),
+        "Portland 2024 District 2 (k=3)": ("Dis_2/Election_results_dis2.csv", 3, 6.5, 8),
+        "Portland 2024 District 3 (k=3)": ("Dis_3/Election_results_dis3.csv", 3, 13.0, 8),
+        "Portland 2024 District 4 (k=3)": ("Dis_4/Election_results_dis4.csv", 3, 9.5, 8),
+    }
 
-    if example_options:
+    for name, (rel_path, k, budget, keep) in portland_configs.items():
+        filepath = portland_path / rel_path
+        if filepath.exists():
+            curated_examples[name] = (filepath, k, budget, keep)
+
+    if curated_examples:
+        # Group examples by category for better UX
+        example_names = list(curated_examples.keys())
+
         selected_example = st.selectbox(
             "Select example election",
-            options=list(example_options.keys()),
-            help="Alaska = single-winner (k=1), Portland = multi-winner (k=3)"
+            options=example_names,
+            help="Single-winner (k=1) or multi-winner Portland (k=3)"
         )
-        uploaded_file = example_options[selected_example]
 
-        # Auto-set k for Portland
-        if "Portland" in selected_example:
-            st.info("💡 Portland uses multi-winner STV with k=3. Set 'Number of Winners' to 3 in sidebar.")
+        filepath, rec_k, rec_budget, rec_keep = curated_examples[selected_example]
+        uploaded_file = filepath
+
+        # Store recommended parameters in session_state for sidebar to use
+        st.session_state['recommended_k'] = rec_k
+        st.session_state['recommended_budget'] = rec_budget
+        st.session_state['recommended_keep_at_least'] = rec_keep
+
+        if rec_k > 1:
+            st.info(f"💡 **Recommended settings:** k={rec_k}, Budget={rec_budget}%, Keep at least={rec_keep}")
+        else:
+            st.info(f"💡 **Single-winner election.** Default settings should work well.")
 
 # Process uploaded file
 if uploaded_file is not None:
@@ -364,6 +419,17 @@ if uploaded_file is not None:
             st.stop()
         elif len(candidates) > 52:
             st.error(f"Too many candidates ({len(candidates)}). Maximum supported is 52.")
+            st.stop()
+        elif len(candidates) < k:
+            st.error(f"Not enough candidates ({len(candidates)}) for {k} winner(s). Need at least {k} candidates.")
+            st.stop()
+        elif len(candidates) == 1:
+            st.warning(f"Only 1 candidate detected - they win by default.")
+            st.metric("Winner", candidates[0])
+            st.stop()
+        elif len(candidates) == k:
+            st.warning(f"Number of candidates ({len(candidates)}) equals number of winners ({k}) - all candidates win by default.")
+            st.markdown("**Winners:** " + ", ".join(candidates))
             st.stop()
         else:
             st.success(f"Detected {len(candidates)} candidates")
@@ -439,16 +505,20 @@ if uploaded_file is not None:
                 status.text("Computing optimal strategies...")
                 progress.progress(60)
 
-                # For multi-winner (k > 1), use higher keep_at_least for large elections
+                # Use user's keep_at_least setting
+                # For multi-winner, original Portland code uses keep_at_least=7 for 16 candidates
+                # Higher values = more combinations = exponentially slower
                 effective_keep_at_least = keep_at_least
-                if k > 1 and len(candidates_list) > 15:
-                    effective_keep_at_least = max(keep_at_least, min(20, len(candidates_list) - 5))
 
+                # elim_cands: efficiency shortcut to skip early removal iterations.
+                # e.g., for 22 candidates, elim_cands=[] tests 22→21→20→...→8
+                # Setting elim_cands=candidates[-12:] skips to 10→9→8 directly.
+                # Final result is same if removal algorithm would eliminate them anyway.
                 analysis_result = process_ballot_counts_post_elim_no_print(
                     ballot_counts=ballot_counts,
                     k=k,
                     candidates=candidates_list,
-                    elim_cands=[],
+                    elim_cands=[],  # Let removal algorithm handle full trajectory
                     check_strats=check_strategies,
                     budget_percent=budget_percent,
                     check_removal_here=(len(candidates_list) > 9),
@@ -527,6 +597,9 @@ if uploaded_file is not None:
                         # Use the best working budget found
                         strategies = working_result.get("Strategies", {})
                         computed_threshold = working_budget
+                        # CRITICAL: Also update results to match the strategies computation
+                        # This ensures original_winners used in conversion matches what we display
+                        results = working_result.get("overall_winning_order", results)
                         analysis_result["candidates_removed"] = working_result.get("candidates_removed", [])
                         analysis_result["candidates_retained"] = working_result.get("candidates_retained", [])
 
@@ -548,12 +621,26 @@ if uploaded_file is not None:
 
                 # Use appropriate exhaustion function based on k
                 if k == 1:
+                    # IRV_ballot_exhaust returns CUMULATIVE exhaustion (total - remaining)
                     exhausted_list, exhausted_dict = IRV_ballot_exhaust(candidates_list, ballot_counts)
+                    exhausted_pct = {key: round(val/total_votes*100, 2) for key, val in exhausted_dict.items()}
+                    total_exhausted_final = exhausted_dict.get(results[-1], 0) if results else 0
                 else:
+                    # STV_ballot_exhaust returns INCREMENTAL exhaustion per round
+                    # For probability analysis, we need CUMULATIVE exhaustion at each candidate's elimination
                     exhausted_list, exhausted_dict, stv_winners = STV_ballot_exhaust(candidates_list, ballot_counts, k, Q)
-                exhausted_pct = {key: round(val/total_votes*100, 2) for key, val in exhausted_dict.items()}
 
-                total_exhausted_final = exhausted_dict.get(results[-1], 0) if results else 0
+                    # Compute cumulative exhaustion using rt2 (event log from STV)
+                    cumulative_exhausted_pct = {}
+                    cumulative = 0
+                    for i, (candidate, is_winner) in enumerate(rt2):
+                        if i < len(exhausted_list):
+                            cumulative += exhausted_list[i]
+                        cumulative_exhausted_pct[candidate] = round(cumulative / total_votes * 100, 2)
+
+                    exhausted_pct = cumulative_exhausted_pct
+                    total_exhausted_final = cumulative if exhausted_list else 0
+
                 exhaustion_rate = round(total_exhausted_final / total_votes * 100, 2)
 
                 progress.progress(100)
@@ -581,6 +668,12 @@ if uploaded_file is not None:
 
                 # Candidate removal and threshold info
                 candidates_removed = analysis_result.get("candidates_removed", [])
+                candidates_retained = analysis_result.get("candidates_retained", [])
+
+                # Debug info about reduction
+                st.caption(f"Debug: Retained {len(candidates_retained)} candidates: {candidates_retained[:10]}{'...' if len(candidates_retained) > 10 else ''}")
+                st.caption(f"Debug: Strategies computed for {len(strategies)} candidates: {list(strategies.keys())}")
+
                 if candidates_removed:
                     removed_names = [reverse_mapping.get(c, c) for c in candidates_removed if c in reverse_mapping or c in candidates_removed]
                     removal_msg = f"**Candidate Reduction:** Reduced from {len(candidates_list)} to {len(candidates_list) - len(candidates_removed)} candidates for tractable analysis."
@@ -618,10 +711,18 @@ if uploaded_file is not None:
                         strategy_detail = {}
 
                     # For multi-winner, first k are all winners regardless of computed gap
+                    # Non-winners (i >= k) should NEVER be shown as "Winner" even if gap=0
                     if i < k:
                         category = "Winner"
-                    elif gap != float('inf'):
+                        gap = 0.0  # Ensure winners always show gap=0
+                    elif gap != float('inf') and gap > 0:
                         category = categorize_gap(gap, k)
+                    elif gap == 0:
+                        # Non-winner with gap=0 is an artifact - treat as near winner
+                        category = "Near Winner"
+                    elif gap == float('inf'):
+                        # Strategy not computed - we only know gap >= threshold, not actual category
+                        category = "Beyond Threshold"
                     else:
                         category = "-"
 
@@ -631,16 +732,24 @@ if uploaded_file is not None:
                         all_selfish = False
 
                     # Track non-winner gaps for margin of victory
-                    if gap > 0 and gap != float('inf'):
+                    if i >= k and gap > 0 and gap != float('inf'):
                         non_winner_gaps.append(gap)
 
                     # Format strategy description
-                    # For multi-winner, first k candidates are all winners (gap = 0)
-                    if gap == 0 or i < k:
+                    # Only first k candidates are actual winners
+                    if i < k:
                         strategy_desc = "Actual winner" if k > 1 else "Current winner"
                         strategy_type = "-"
                     elif gap == float('inf'):
-                        strategy_desc = "Not computed"
+                        if strategies:
+                            # We computed strategies at a threshold, so this candidate needs >= threshold
+                            strategy_desc = f"≥ {computed_threshold:.1f}% needed"
+                        else:
+                            strategy_desc = "Not computed"
+                        strategy_type = "-"
+                    elif gap == 0 and i >= k:
+                        # Non-winner with gap=0 is an edge case (artifact of reduced state)
+                        strategy_desc = "Very close to winning"
                         strategy_type = "-"
                     elif strategy_detail and not selfish:
                         support_parts = []
@@ -654,8 +763,12 @@ if uploaded_file is not None:
                         strategy_desc = f"Self-support: +{gap:.2f}%"
                         strategy_type = "Selfish"
 
-                    # Check if candidate was filtered by threshold
+                    # Check if candidate's strategy was not computed
+                    # This happens if: (1) explicitly removed by remove_irrelevent, OR
+                    # (2) not in the reduced candidate set's strategy results
+                    # If strategies were computed at threshold X, any uncomputed candidate has gap >= X
                     was_filtered = code in candidates_removed
+                    strategy_not_computed = (gap == float('inf')) and (i >= k)  # Non-winner without strategy
 
                     order_data.append({
                         "Rank": i + 1,
@@ -665,6 +778,7 @@ if uploaded_file is not None:
                         "Is Winner": (i < k),  # First k candidates are winners in multi-winner
                         "Gap Computed": (gap != float('inf')),
                         "Was Filtered": was_filtered,
+                        "Strategy Not Computed": strategy_not_computed,
                         "Category": category,
                         "Strategy Type": strategy_type,
                         "Required Strategy": strategy_desc,
@@ -690,20 +804,22 @@ if uploaded_file is not None:
                     color = CATEGORY_COLORS.get(cat, {}).get('bg', 'white')
                     return [f'background-color: {color}'] * len(row)
 
-                display_df = order_df[['Rank', 'ID', 'Candidate', 'Victory Gap (%)', 'Was Filtered', 'Category', 'Required Strategy', 'Exhaustion (%)']].copy()
+                display_df = order_df[['Rank', 'ID', 'Candidate', 'Victory Gap (%)', 'Was Filtered', 'Strategy Not Computed', 'Category', 'Required Strategy', 'Exhaustion (%)']].copy()
 
-                # Format victory gap: show ≥ X% for threshold-filtered candidates
+                # Format victory gap: show ≥ X% for any candidate without computed strategy
+                # If we successfully computed strategies at threshold X, uncomputed candidates have gap >= X
                 def format_gap(row):
                     gap = row['Victory Gap (%)']
                     if pd.notna(gap):
                         return f"{gap:.2f}"
-                    elif row['Was Filtered']:
+                    elif (row['Was Filtered'] or row['Strategy Not Computed']) and strategies:
+                        # Strategies were computed at computed_threshold, so this candidate has gap >= threshold
                         return f"≥ {computed_threshold:.1f}"
                     else:
                         return "N/A"
 
                 display_df['Victory Gap (%)'] = display_df.apply(format_gap, axis=1)
-                display_df = display_df.drop(columns=['Was Filtered'])
+                display_df = display_df.drop(columns=['Was Filtered', 'Strategy Not Computed'])
                 display_df['Exhaustion (%)'] = display_df['Exhaustion (%)'].apply(lambda x: f"{x:.2f}")
 
                 styled_df = display_df.style.apply(style_victory_table, axis=1)

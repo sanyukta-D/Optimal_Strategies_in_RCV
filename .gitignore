@@ -35,5 +35,8 @@ results/
 cleaned_files/
 primary_final_results/
 
+# Large data files (download separately)
+dataverse_files*/
+
 # Claude Code
 .claude/

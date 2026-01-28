@@ -7,13 +7,23 @@ import seaborn as sns
 from scipy import stats
 import ast
 import os
-from case_studies.nyc.convert_data import process_single_file, create_candidate_mapping
-from rcv_strategies.utils import case_study_helpers
 from string import ascii_uppercase
-from rcv_strategies.core.stv_irv import STV_optimal_result_simple
-from rcv_strategies.utils import helpers as utils
 import math
 import argparse
+
+# Core RCV imports
+from rcv_strategies.utils import case_study_helpers
+from rcv_strategies.core.stv_irv import STV_optimal_result_simple
+from rcv_strategies.utils import helpers as utils
+
+# Optional import for NYC data processing (only needed for standalone analysis)
+try:
+    from case_studies.nyc.convert_data import process_single_file, create_candidate_mapping
+    NYC_CONVERT_AVAILABLE = True
+except ImportError:
+    NYC_CONVERT_AVAILABLE = False
+    process_single_file = None
+    create_candidate_mapping = None
 
 # Constants and configuration settings
 MAX_RANKINGS_NYC = 5  # NYC allows max 6 rankings per ballot
