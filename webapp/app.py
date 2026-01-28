@@ -302,7 +302,7 @@ with col2:
 # Load example data if requested
 if use_example and uploaded_file is None:
     base_path = Path(__file__).parent.parent / "case_studies"
-    dataverse_path = Path(__file__).parent.parent / "dataverse_files (1)"
+    examples_path = base_path / "examples"
 
     # Curated collection of interesting elections with metadata
     # Format: display_name -> (file_path, k, budget, keep_at_least)
@@ -311,19 +311,13 @@ if use_example and uploaded_file is None:
     # === HIGH-PROFILE SINGLE-WINNER ELECTIONS ===
     single_winner_files = {
         "NYC 2025 Mayoral Primary (DEM)": ("NewYorkCity_20250624_DEMMayorCitywide.csv", 1, 10.0, 7),
-        "NYC 2021 Mayoral Primary (DEM)": ("NewYorkCity_20210622_DEM_Mayor.csv", 1, 10.0, 7),
-        "Alaska 2024 US House": ("Alaska_20241105_US_House.csv", 1, 10.0, 7),
-        "San Francisco 2024 Mayor": ("SanFrancisco_20241105_Mayor.csv", 1, 10.0, 7),
-        "Oakland 2022 Mayor": ("Oakland_20221108_Mayor.csv", 1, 10.0, 7),
         "Minneapolis 2021 Mayor": ("Minneapolis_20211102_Mayor.csv", 1, 10.0, 7),
-        "Burlington 2009 Mayor": ("Burlington_20090303_Mayor.csv", 1, 10.0, 7),
-        "Maine 2018 Congressional District 2": ("Maine_20181106_CongressionalDistrict2.csv", 1, 10.0, 7),
         "San Francisco 2011 Mayor": ("SanFrancisco_20111108_Mayor.csv", 1, 10.0, 7),
-        "Oakland 2010 Mayor": ("Oakland_20101102_Mayor.csv", 1, 10.0, 7),
+        "Burlington 2009 Mayor": ("Burlington_20090303_Mayor.csv", 1, 10.0, 7),
     }
 
     for name, (filename, k, budget, keep) in single_winner_files.items():
-        filepath = dataverse_path / filename
+        filepath = examples_path / filename
         if filepath.exists():
             curated_examples[name] = (filepath, k, budget, keep)
 
