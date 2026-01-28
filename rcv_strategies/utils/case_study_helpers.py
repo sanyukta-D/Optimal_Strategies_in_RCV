@@ -407,19 +407,13 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
         candidates_reduced, group_remaining, stop = remove_irrelevent(
             ballot_counts, rt, results[:keep_at_least], budget, ''.join(results), rigorous_check
         )
-        if stop and len(candidates_reduced) == len(results[:keep_at_least]):
-            # Removal verified exactly keep_at_least candidates at this budget
-            # This budget is sufficient - proceed with strategy computation
-            candidates_retained = results[:keep_at_least]
+        if stop:
+            # Removal succeeded - use whatever candidates were retained
+            candidates_retained = candidates_reduced
             candidates_removed = [c for c in results if c not in candidates_retained]
             group_remaining = ''.join(candidates_removed)
-        elif stop:
-            # Removal verified fewer candidates than keep_at_least
-            # This budget doesn't support keep_at_least - trigger divide-and-conquer
-            candidates_removed = []
-            candidates_retained = []  # Empty signals to skip strategy computation
         else:
-            # Removal failed entirely
+            # Removal failed - keep all candidates
             candidates_removed = []
             candidates_retained = candidates
 
