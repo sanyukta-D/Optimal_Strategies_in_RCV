@@ -955,12 +955,8 @@ if uploaded_file is not None:
 - **Unconditional Bootstrap:** Samples completions from all non-exhausted ballots regardless of first preference.
                                     """)
 
-                                    # Option for full analysis
-                                    full_analysis = st.checkbox(
-                                        "Run full bootstrap analysis (1000 iterations - slower but more accurate)",
-                                        key=f"full_{cand['code']}"
-                                    )
-                                    n_bootstrap = 1000 if full_analysis else 200
+                                    # Use 200 iterations for bootstrap (fast enough, reasonably accurate)
+                                    n_bootstrap = 200
 
                                     gap = cand['gap']
                                     exhaust = cand['exhaust']
