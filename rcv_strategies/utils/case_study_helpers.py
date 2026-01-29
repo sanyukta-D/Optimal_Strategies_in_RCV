@@ -422,12 +422,12 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
 
     # Check strategies if requested
     if len(candidates) > 2 and check_strats:
-        if len(candidates_retained) <= 1:
+        if len(candidates_retained) < 1:
             # Empty or single candidate - budget doesn't support keep_at_least
             # Return empty strategies so webapp's divide-and-conquer can try a lower budget
             strats_frame = {}
             strats_frame_percent = {}
-        elif len(candidates_retained) > 1 and len(candidates_retained) < len(candidates):
+        elif len(candidates_retained) >= 1 and len(candidates_retained) < len(candidates):
             # Some candidates were removed - filter ballots to only include retained candidates
             filtered_data = {}
             elim_strings = ''.join(candidates_removed) if isinstance(candidates_removed, str) else ''.join(candidates_removed)
@@ -488,24 +488,15 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
 
             strats_frame_percent = convert_to_percentage(strats_frame, total_votes)
         else:
-            # Small election (< 9 candidates) - compute directly
-            if len(candidates) < 9:
+            # No candidates removed by remove_irrelevent.
+            # Use elec_cands (which excludes any pre-eliminated candidates from elim_cands).
+            if len(elec_cands) <= 9:
                 strats_frame = reach_any_winners_campaign_parallel(
                     elec_cands, k, Q, filtered_data, budget, c_l=[], zeros=0,
                     allowed_length=allowed_length
                 )
                 # Convert for multi-winner
                 if k > 1 and strats_frame:
-                    strats_frame = convert_combination_strats_to_candidate_strats(strats_frame, k, results)
-                strats_frame_percent = convert_to_percentage(strats_frame, total_votes)
-            elif k > 1 and len(candidates) <= 12:
-                # Multi-winner with moderate candidates - use parallel
-                strats_frame = reach_any_winners_campaign_parallel(
-                    elec_cands, k, Q, filtered_data, budget,
-                    c_l=[], zeros=0, allowed_length=allowed_length
-                )
-                # Convert for multi-winner
-                if strats_frame:
                     strats_frame = convert_combination_strats_to_candidate_strats(strats_frame, k, results)
                 strats_frame_percent = convert_to_percentage(strats_frame, total_votes)
 

@@ -309,10 +309,10 @@ if use_example and uploaded_file is None:
 
     # === HIGH-PROFILE SINGLE-WINNER ELECTIONS ===
     single_winner_files = {
-        "NYC 2025 Mayoral Primary (DEM)": ("NewYorkCity_20250624_DEMMayorCitywide.csv", 1, 10.0, 7),
+        "NYC 2025 Mayoral Primary (DEM)": ("NewYorkCity_20250624_DEMMayorCitywide.csv", 1, 40.0, 7),
         "Minneapolis 2021 Mayor": ("Minneapolis_20211102_Mayor.csv", 1, 10.0, 7),
         "San Francisco 2011 Mayor": ("SanFrancisco_20111108_Mayor.csv", 1, 10.0, 7),
-        "Burlington 2009 Mayor": ("Burlington_20090303_Mayor.csv", 1, 10.0, 7),
+        "Burlington 2009 Mayor": ("Burlington_20090303_Mayor.csv", 1, 40.0, 7),
     }
 
     for name, (filename, ex_k, ex_budget, ex_keep) in single_winner_files.items():
@@ -498,107 +498,96 @@ if uploaded_file is not None:
                 rt2, dt2, _ = STV_optimal_result_simple(candidates_list, ballot_counts, k, Q)
                 results_alphabetical, _ = return_main_sub(rt2)
 
-                # Step 5: Run strategy analysis with divide-and-conquer for large elections
+                # Step 5: Run strategy analysis
                 status.text("Computing optimal strategies...")
                 progress.progress(60)
 
-                # Use user's keep_at_least setting
-                # For multi-winner, original Portland code uses keep_at_least=7 for 16 candidates
-                # Higher values = more combinations = exponentially slower
                 effective_keep_at_least = keep_at_least
+                max_for_strats = 8
+                n_candidates = len(candidates_list)
 
-                # elim_cands: efficiency shortcut to skip early removal iterations.
-                # e.g., for 22 candidates, elim_cands=[] tests 22→21→20→...→8
-                # Setting elim_cands=candidates[-12:] skips to 10→9→8 directly.
-                # Final result is same if removal algorithm would eliminate them anyway.
-                analysis_result = process_ballot_counts_post_elim_no_print(
-                    ballot_counts=ballot_counts,
-                    k=k,
-                    candidates=candidates_list,
-                    elim_cands=[],  # Let removal algorithm handle full trajectory
-                    check_strats=check_strategies,
-                    budget_percent=budget_percent,
-                    check_removal_here=(len(candidates_list) > 9),
-                    keep_at_least=effective_keep_at_least,
-                    rigorous_check=rigorous_check,
-                    spl_check=(k > 1)  # Enable special STV check for multi-winner
-                )
+                # Pre-eliminate weakest candidates (fallback when removal fails
+                # at every budget). Weakest = last in results_alphabetical.
+                if n_candidates > max_for_strats:
+                    n_to_elim = n_candidates - max_for_strats
+                    elim_cands = list(results_alphabetical[-n_to_elim:])
+                else:
+                    elim_cands = []
 
-                results = analysis_result.get("overall_winning_order", candidates_list)
-                strategies = analysis_result.get("Strategies", {})
-                Q = analysis_result.get("quota", Q)
-
-                # Divide and conquer: if strategies empty for large election, find threshold
-                # by DECREASING budget until candidate removal can reduce to tractable size
                 computed_threshold = budget_percent
-                if not strategies and len(candidates_list) > 8 and check_strategies:
-                    status.text("Finding tractable threshold for strategy computation...")
 
-                    def try_budget(test_budget):
-                        """Helper to test if a budget works."""
-                        result = process_ballot_counts_post_elim_no_print(
+                if n_candidates > max_for_strats and check_strategies:
+                    # Large election: find the reduction threshold — the highest
+                    # budget at which candidate removal produces a tractable set.
+                    status.text("Finding reduction threshold...")
+
+                    def removal_works(test_budget):
+                        """Quick check (no strategy computation)."""
+                        r = process_ballot_counts_post_elim_no_print(
                             ballot_counts=ballot_counts,
                             k=k,
                             candidates=candidates_list,
-                            elim_cands=[],
-                            check_strats=True,
+                            elim_cands=elim_cands,
+                            check_strats=False,
                             budget_percent=test_budget,
                             check_removal_here=True,
                             keep_at_least=effective_keep_at_least,
                             rigorous_check=rigorous_check,
-                            spl_check=(k > 1)  # Enable special STV check for multi-winner
+                            spl_check=(k > 1)
                         )
-                        return result if result.get("Strategies", {}) else None
+                        removed = r.get("candidates_removed", [])
+                        retained = r.get("candidates_retained", [])
+                        return bool(removed) and len(retained) > k and len(retained) <= max_for_strats
 
-                    # Phase 1: Coarse search - find approximate working budget
-                    # Start with large steps, then finer steps below 5%
-                    coarse_budgets = [b for b in [30, 25, 20, 15, 10, 7.5, 5] if b < budget_percent]
-                    fine_budgets = [4, 3, 2.5, 2, 1.5, 1, 0.8, 0.6, 0.4, 0.2]
-                    all_budgets = coarse_budgets + fine_budgets
-
-                    working_budget = None
-                    working_result = None
-
-                    for test_budget in all_budgets:
-                        if test_budget >= budget_percent:
-                            continue
-                        result = try_budget(test_budget)
-                        if result:
-                            working_budget = test_budget
-                            working_result = result
-                            break
-
-                    # Phase 2: Binary search to find highest working budget (with 0.1% precision for fine, 0.5% for coarse)
-                    if working_budget is not None:
-                        # Search between working_budget and the previous failed budget
-                        try:
-                            idx = all_budgets.index(working_budget)
-                            upper = all_budgets[idx - 1] if idx > 0 else budget_percent
-                        except ValueError:
-                            upper = budget_percent
-                        lower = working_budget
-
-                        # Use finer precision (0.1%) for small budgets, coarser (0.5%) for larger
-                        precision = 0.1 if working_budget < 5 else 0.5
-
-                        while upper - lower > precision:
-                            mid = round((upper + lower) / 2, 2)
-                            result = try_budget(mid)
-                            if result:
-                                lower = mid
-                                working_budget = mid
-                                working_result = result
+                    if removal_works(budget_percent):
+                        computed_threshold = budget_percent
+                    else:
+                        # Binary search for highest budget where removal succeeds
+                        lo, hi = 0.5, budget_percent
+                        best = None
+                        while hi - lo > 0.5:
+                            mid = round((lo + hi) / 2, 1)
+                            if removal_works(mid):
+                                best = mid
+                                lo = mid
                             else:
-                                upper = mid
+                                hi = mid
+                        if best is not None:
+                            computed_threshold = best
 
-                        # Use the best working budget found
-                        strategies = working_result.get("Strategies", {})
-                        computed_threshold = working_budget
-                        # CRITICAL: Also update results to match the strategies computation
-                        # This ensures original_winners used in conversion matches what we display
-                        results = working_result.get("overall_winning_order", results)
-                        analysis_result["candidates_removed"] = working_result.get("candidates_removed", [])
-                        analysis_result["candidates_retained"] = working_result.get("candidates_retained", [])
+                    # Compute strategies at the reduction threshold
+                    progress.progress(60)
+                    status.text(f"Computing strategies at {computed_threshold:.1f}% threshold...")
+                    analysis_result = process_ballot_counts_post_elim_no_print(
+                        ballot_counts=ballot_counts,
+                        k=k,
+                        candidates=candidates_list,
+                        elim_cands=elim_cands,
+                        check_strats=True,
+                        budget_percent=computed_threshold,
+                        check_removal_here=True,
+                        keep_at_least=effective_keep_at_least,
+                        rigorous_check=rigorous_check,
+                        spl_check=(k > 1)
+                    )
+                else:
+                    # Small election (≤ 8 candidates): compute strategies directly
+                    analysis_result = process_ballot_counts_post_elim_no_print(
+                        ballot_counts=ballot_counts,
+                        k=k,
+                        candidates=candidates_list,
+                        elim_cands=[],
+                        check_strats=check_strategies,
+                        budget_percent=budget_percent,
+                        check_removal_here=False,
+                        keep_at_least=effective_keep_at_least,
+                        rigorous_check=rigorous_check,
+                        spl_check=(k > 1)
+                    )
+
+                results = analysis_result.get("overall_winning_order", candidates_list)
+                strategies = analysis_result.get("Strategies", {})
+                Q = analysis_result.get("quota", Q)
 
                 # Results should now be ['A', 'B', 'C', ...] where first k are winners
                 # For multi-winner (k > 1), first k candidates are all winners
