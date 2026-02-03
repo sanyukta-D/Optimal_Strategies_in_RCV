@@ -5,7 +5,7 @@ Candidate Removal Functions for Tractable Strategy Computation
 Repository: https://github.com/sanyukta-D/Optimal_Strategies_in_RCV
 
 PROBLEM:
-Strategy computation is exponential in candidate count. For > 8 candidates,
+Strategy computation is exponential in candidate count. For >= MAX_TRACTABLE_CANDIDATES,
 direct computation is intractable (too slow and memory-intensive).
 
 SOLUTION:
@@ -33,32 +33,33 @@ Functions:
 ----------
 - strict_support(): Calculate votes where candidate is ranked first in removal group
 - check_removal(): Verify if removal satisfies theorems (both basic and rigorous)
-- remove_irrelevent(): Iteratively remove candidates until no more can be removed
+- remove_irrelevant(): Iteratively remove candidates until no more can be removed
 - predict_losses(): Predict which candidates will definitely lose
 
 Usage in Strategy Computation:
 ------------------------------
     # In case_study_helpers.py
-    candidates_reduced, group, stop = remove_irrelevent(
+    candidates_reduced, group, stop = remove_irrelevant(
         ballot_counts, rt, results[:keep_at_least], budget, ''.join(results), rigorous_check
     )
 
     if stop:
-        # Removal succeeded - candidates_reduced is tractable (< 9 candidates)
+        # Removal succeeded - candidates_reduced is tractable (< MAX_TRACTABLE_CANDIDATES)
         # Compute strategies on this reduced set
         strats = reach_any_winners_campaign(candidates_reduced, k, Q, filtered_data, budget)
 
     # If stop=False, removal failed - try lower budget or smaller keep_at_least
 
 TRACTABILITY CONSTRAINT:
-    Strategy computation requires < 9 candidates.
-    If len(candidates_reduced) >= 9, the webapp's binary search
+    Strategy computation requires < MAX_TRACTABLE_CANDIDATES candidates.
+    If len(candidates_reduced) >= MAX_TRACTABLE_CANDIDATES, the webapp's binary search
     should try a lower budget to achieve more aggressive removal.
 
 Paper Reference: Section 4 "Candidate Removal" in "Optimal Strategies in RCV"
 """
 
 from rcv_strategies.utils.helpers import get_new_dict
+from rcv_strategies.constants import MAX_TRACTABLE_CANDIDATES
 from operator import itemgetter
 
 def strict_support(ballot_counts, lower_group, upper_group, candidate):
@@ -193,7 +194,7 @@ def check_removal(candidates, group, ballot_counts, budget, rigorous_check=True)
     return can_remove
 
 
-def remove_irrelevent(ballot_counts, rt, startcandidates, budget, fullgroup, rigorous_check=True):
+def remove_irrelevant(ballot_counts, rt, startcandidates, budget, fullgroup, rigorous_check=True):
     """
     Iteratively remove candidates who cannot affect the election outcome.
 
@@ -239,7 +240,7 @@ def remove_irrelevent(ballot_counts, rt, startcandidates, budget, fullgroup, rig
 
     Example:
         >>> # Portland Dis 4: 30 candidates, k=3, budget=6%
-        >>> candidates_retained, group, stop = remove_irrelevent(
+        >>> candidates_retained, group, stop = remove_irrelevant(
         ...     ballot_counts, rt, results[:8], budget, ''.join(results), True
         ... )
         >>> stop
@@ -257,8 +258,6 @@ def remove_irrelevent(ballot_counts, rt, startcandidates, budget, fullgroup, rig
         else:
             # Removal failed - try lower budget (webapp's binary search)
             return empty strategies to signal retry
-
-    Note: Function name has typo 'irrelevent' but kept for backwards compatibility.
 
     Paper Reference: Algorithm 1 "Iterative Candidate Removal"
     """

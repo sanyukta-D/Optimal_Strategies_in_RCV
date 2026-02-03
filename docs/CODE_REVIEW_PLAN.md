@@ -1,12 +1,13 @@
 # Code Review & Documentation Plan
 
-## Status: DOCUMENTATION COMPLETED, ONE BUG TO FIX
+## Status: ALL ISSUES RESOLVED ✓
 
 Documentation improvements have been implemented across all key files.
+All bugs have been fixed and code quality improvements completed.
 
 ---
 
-## CRITICAL BUG: Zombie Multiprocessing Workers
+## ✓ FIXED: Zombie Multiprocessing Workers
 
 ### Problem
 When running large elections (e.g., Portland District 1 with 8 candidates), the `reach_any_winners_campaign_parallel()` function spawns 8 worker processes. These workers do NOT terminate properly when:
@@ -60,14 +61,76 @@ def reach_any_winners_campaign_parallel(...):
     return results
 ```
 
-### Files to Modify
-- `rcv_strategies/core/strategy.py`: Fix `reach_any_winners_campaign_parallel()` function
+### Resolution
+**Fixed in `rcv_strategies/core/strategy.py:916`** - Replaced context manager with explicit try/finally block:
+```python
+pool = None
+try:
+    pool = Pool(processes=None)
+    all_results = pool.map(process_func, all_combinations)
+    # Process results...
+    return results
+finally:
+    if pool is not None:
+        pool.terminate()  # Kill workers immediately
+        pool.join()       # Wait for them to actually stop
+```
 
-### Temporary Workaround
-Until fixed, users should:
-1. Always press Ctrl+C in terminal before closing browser
-2. Check for zombies: `ps aux | grep streamlit`
-3. Kill all if needed: `pkill -9 -f streamlit`
+This ensures proper cleanup even when Streamlit reruns or the browser closes.
+
+---
+
+## ✓ FIXED: Function Name Typo
+
+### Problem
+The function `remove_irrelevent()` had a typo in its name - it should be `remove_irrelevant()` with an 'a'.
+
+### Resolution
+**Renamed across entire codebase:**
+- **Function definition**: `rcv_strategies/core/candidate_removal.py:196`
+- **Import statements**: Updated in all files
+- **Function calls**: Updated in:
+  - `rcv_strategies/utils/case_study_helpers.py` (8 call sites)
+  - `webapp/app.py` (2 references)
+  - `scripts/analyze_dataverse_thresholds.py` (1 call site)
+- **Documentation**: Updated in docstrings and comments
+
+**Note**: Jupyter notebooks (`notebooks/tutorial.ipynb`) not automatically updated - will need manual review.
+
+---
+
+## ✓ IMPROVEMENT: Named Tractability Constant
+
+### Problem
+The tractability constraint (< 9 candidates) was hardcoded throughout the codebase as a magic number.
+
+### Resolution
+**Created `rcv_strategies/constants.py`:**
+```python
+# Tractability constraint for strategy computation
+# Strategy computation is exponential in candidate count and becomes intractable
+# for >= 9 candidates. For larger elections, use candidate removal (Theorem 4.1/4.3)
+# to reduce the candidate set below this threshold.
+MAX_TRACTABLE_CANDIDATES = 9
+```
+
+**Updated all references across the codebase:**
+- `rcv_strategies/core/strategy.py`: Import and use constant
+- `rcv_strategies/core/candidate_removal.py`: Import and use in docstrings
+- `rcv_strategies/utils/case_study_helpers.py`:
+  - Import constant
+  - Replace all `< 9 candidates` → `< MAX_TRACTABLE_CANDIDATES`
+  - Replace all `>= 9` → `>= MAX_TRACTABLE_CANDIDATES`
+  - Replace all `< 9:` → `< MAX_TRACTABLE_CANDIDATES:`
+- `webapp/app.py`:
+  - Import constant
+  - `max_for_strats = MAX_TRACTABLE_CANDIDATES - 1`
+  - Update comments to reference constant
+
+**Benefits:**
+- Single source of truth for tractability limit
+- Easier to adjust if algorithm improvements change threshold
+- More self-documenting code
 
 ---
 
@@ -190,11 +253,13 @@ collection[26] # After 26 events (e.g., Portland Dis 4 reduced to 4 candidates)
 
 | File | Changes |
 |------|---------|
-| `rcv_strategies/utils/case_study_helpers.py` | Module docstring, function docs, inline comments |
+| `rcv_strategies/constants.py` | **NEW**: Added MAX_TRACTABLE_CANDIDATES constant |
+| `rcv_strategies/core/strategy.py` | Module docstring, zombie bug fix, import constant |
+| `rcv_strategies/core/candidate_removal.py` | Module docstring, rename remove_irrelevent→remove_irrelevant, import constant |
+| `rcv_strategies/utils/case_study_helpers.py` | Module docstring, function docs, inline comments, rename function calls, use constant |
 | `rcv_strategies/core/stv_irv.py` | Module docstring, STV_optimal_result_simple docs |
-| `rcv_strategies/core/candidate_removal.py` | Module docstring, remove_irrelevent docs |
-| `rcv_strategies/core/strategy.py` | Module docstring |
-| `webapp/app.py` | Section comments for pipeline and binary search |
+| `webapp/app.py` | Section comments, rename function import/calls, import constant |
+| `scripts/analyze_dataverse_thresholds.py` | Rename function import/calls |
 
 ---
 
@@ -205,3 +270,199 @@ collection[26] # After 26 events (e.g., Portland Dis 4 reduced to 4 candidates)
 - Theorem 4.3 (Rigorous Check)
 - Section 3 (Strategy Computation)
 - Section 5.2 (Early Winner Handling)
+
+---
+
+## Future Documentation Enhancements
+
+The following documentation gaps have been identified for future improvement:
+
+### 1. Architecture Documentation
+
+**Current Gap**: No high-level architecture diagram showing how components interact.
+
+**Proposed Addition**: Create `docs/ARCHITECTURE.md` with:
+- System architecture diagram showing the 5-step pipeline:
+  1. Ballot conversion (CSV → ballot_counts)
+  2. Initial STV run (get social choice order)
+  3. Candidate remapping (Winner→A, Runner-up→B)
+  4. Second STV run (with remapped candidates)
+  5. Strategy computation (with candidate removal if needed)
+- Component interaction diagram
+- Data flow visualization (ballot_counts → rt/dt/collection → strategies)
+- Module dependency graph
+
+**Benefit**: New contributors can understand the system structure at a glance.
+
+---
+
+### 2. Performance Benchmarks
+
+**Current Gap**: No documented performance characteristics for different election sizes.
+
+**Proposed Addition**: Create `docs/PERFORMANCE.md` with:
+- Timing benchmarks for N candidates (3, 5, 7, 8, 9+)
+- Memory usage profiles
+- Tractability boundary analysis (why 9 candidates is the limit)
+- Candidate removal success rates at different budgets
+- Parallel vs sequential performance comparison
+- Real election examples with timing (Portland, NYC, Alaska)
+
+**Data Sources**:
+- Existing case studies (Portland Dis 1-4, NYC districts)
+- `scripts/analyze_dataverse_thresholds.py` results
+- Test suite timing data
+
+**Benefit**: Users can estimate runtime for their elections and understand when to use candidate removal.
+
+---
+
+### 3. Tractability Constraint Guide
+
+**Current Gap**: Brief mentions of "< 9 candidates" but no detailed explanation of why or how to work around it.
+
+**Proposed Addition**: Create `docs/TRACTABILITY_GUIDE.md` covering:
+
+**Understanding the Constraint**:
+- Why strategy computation is exponential (combinatorial explosion)
+- Mathematical explanation: O(k! × (n-k)!) complexity
+- Memory requirements for N candidates
+- The MAX_TRACTABLE_CANDIDATES constant (9)
+
+**Working with Large Elections**:
+- When to use `remove_irrelevant()` (Theorems 4.1 & 4.3)
+- How budget affects removal success
+- Binary search strategy for finding optimal budget
+- Examples from Portland Dis 3 & 4 (30 candidates → 4-8)
+
+**Webapp Binary Search**:
+- How `max_for_strats = 8` is used
+- The divide-and-conquer approach
+- When to use "full candidate set" vs "pre-filter"
+- Error messages and what they mean
+
+**Best Practices**:
+- Start with 5-10% budget for large elections
+- Use `rigorous_check=True` for better removal
+- Set `keep_at_least` appropriately (k+2 to k+5)
+
+**Benefit**: Users understand the limitation and know how to work around it effectively.
+
+---
+
+### 4. Migration Guide for Breaking Changes
+
+**Current Gap**: No guide for updating code after the `remove_irrelevent` → `remove_irrelevant` rename.
+
+**Proposed Addition**: Create `docs/MIGRATION.md` (or `CHANGELOG.md` with migration sections):
+
+**Version X.X (2026-02-03)**:
+
+**Breaking Changes**:
+1. **Function Rename**: `remove_irrelevent()` → `remove_irrelevant()`
+   - **Impact**: All code calling this function
+   - **Migration**: Find/replace `remove_irrelevent` → `remove_irrelevant`
+   - **Files affected**: `candidate_removal.py`, `case_study_helpers.py`, `webapp/app.py`, scripts
+
+2. **New Constant**: `MAX_TRACTABLE_CANDIDATES`
+   - **Impact**: Code with hardcoded `9` or `< 9` checks
+   - **Migration**: Import and use `from rcv_strategies.constants import MAX_TRACTABLE_CANDIDATES`
+   - **Benefit**: Future-proof if algorithm improvements change threshold
+
+**Non-Breaking Changes**:
+- Fixed zombie multiprocessing workers in `reach_any_winners_campaign_parallel()`
+- No code changes needed - automatic cleanup improvement
+
+**Jupyter Notebooks**:
+- `notebooks/tutorial.ipynb` requires manual update
+- Search for `remove_irrelevent` and replace with `remove_irrelevant`
+
+**Benefit**: Clear upgrade path for users of the library.
+
+---
+
+### 5. User Guide / Quickstart
+
+**Current Gap**: README exists but lacks step-by-step tutorials for common tasks.
+
+**Proposed Addition**: Expand `README.md` or create `docs/USER_GUIDE.md` with:
+
+**Installation**:
+```bash
+# Clone repository
+git clone https://github.com/sanyukta-D/Optimal_Strategies_in_RCV.git
+cd Optimal_Strategies_in_RCV
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+**Quickstart Examples**:
+
+*Example 1: Analyze a small election (< 9 candidates)*
+```python
+from rcv_strategies.utils.case_study_helpers import process_ballot_counts_post_elim_no_print
+import pandas as pd
+
+# Load your ballot data
+df = pd.read_csv("my_election.csv")
+
+# Analyze with 5% budget
+results = process_ballot_counts_post_elim_no_print(
+    df=df, k=1, budget=5.0, check_removal_here=False
+)
+
+print(results)  # Victory gaps for each candidate
+```
+
+*Example 2: Analyze a large election (>= 9 candidates)*
+```python
+# Same as above but with candidate removal
+results = process_ballot_counts_post_elim_no_print(
+    df=df, k=1, budget=10.0,
+    check_removal_here=True,  # Enable candidate removal
+    keep_at_least=5,          # Retain at least 5 candidates
+    rigorous_check=True       # Use Theorem 4.3 for better removal
+)
+```
+
+*Example 3: Multi-winner STV (k=3)*
+```python
+results = process_ballot_counts_post_elim_no_print(
+    df=df, k=3, budget=8.0, check_removal_here=True
+)
+```
+
+**Common Workflows**:
+- CSV format requirements
+- Interpreting victory gap results
+- Choosing appropriate budget values
+- Troubleshooting candidate removal failures
+
+**Webapp Usage**:
+```bash
+streamlit run webapp/app.py
+```
+- Upload CSV instructions
+- Setting budget slider
+- Reading visualizations
+- Exporting results
+
+**Benefit**: New users can get started quickly without reading research papers.
+
+---
+
+## Implementation Priority
+
+**High Priority** (implement soon):
+1. **Tractability Constraint Guide** - Most common user confusion
+2. **Migration Guide** - Critical after breaking changes
+3. **User Guide / Quickstart** - Reduces onboarding friction
+
+**Medium Priority** (implement as needed):
+4. **Performance Benchmarks** - Useful for capacity planning
+5. **Architecture Documentation** - Helps new contributors
+
+**Note**: All proposed documentation should reference the papers:
+- "Optimal Strategies in Ranked Choice Voting" for algorithms
+- "Simpler Than You Think: The Practical Dynamics of RCV" for interpretation

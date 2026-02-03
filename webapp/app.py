@@ -25,7 +25,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Import RCV analysis functions
 from rcv_strategies.core.stv_irv import IRV_optimal_result, IRV_ballot_exhaust, STV_ballot_exhaust, STV_optimal_result_simple
-from rcv_strategies.core.candidate_removal import remove_irrelevent
+from rcv_strategies.core.candidate_removal import remove_irrelevant
+from rcv_strategies.constants import MAX_TRACTABLE_CANDIDATES
 from rcv_strategies.utils.helpers import get_new_dict, return_main_sub
 from rcv_strategies.utils.case_study_helpers import (
     get_ballot_counts_df,
@@ -463,7 +464,7 @@ if uploaded_file is not None:
                 # For large elections (> 8 candidates):
                 # - Strategy computation is intractable
                 # - Use binary search to find highest budget where removal works
-                # - remove_irrelevent() reduces to tractable set (< 9 candidates)
+                # - remove_irrelevant() reduces to tractable set (< 9 candidates)
                 #
                 # For multi-winner (k > 1):
                 # - May encounter "early winners" exceeding quota after removal
@@ -525,19 +526,19 @@ if uploaded_file is not None:
                 progress.progress(60)
 
                 effective_keep_at_least = keep_at_least
-                max_for_strats = 8  # TRACTABILITY LIMIT: < 9 candidates for exact strategies
+                max_for_strats = MAX_TRACTABLE_CANDIDATES - 1  # TRACTABILITY LIMIT: < MAX_TRACTABLE_CANDIDATES for exact strategies
                 n_candidates = len(candidates_list)
 
                 # ============================================================
                 # DIVIDE-AND-CONQUER: Finding Optimal Budget Threshold
                 # ============================================================
                 #
-                # PROBLEM: With many candidates (> 8), direct strategy computation
-                # is intractable. We need remove_irrelevent() to reduce the set,
+                # PROBLEM: With many candidates (>= MAX_TRACTABLE_CANDIDATES), direct strategy computation
+                # is intractable. We need remove_irrelevant() to reduce the set,
                 # but removal depends on budget - higher budget = more removal.
                 #
                 # SOLUTION: Binary search for the highest budget where:
-                # 1. remove_irrelevent() succeeds (stop=True)
+                # 1. remove_irrelevant() succeeds (stop=True)
                 # 2. retained candidates <= max_for_strats (tractable)
                 #
                 # Two-Phase Approach:

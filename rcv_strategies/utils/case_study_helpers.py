@@ -18,8 +18,8 @@ Key Concepts:
 - Droop Quota: Q = total_votes / (k+1) + 1, where k = number of winners
   A candidate must reach Q to be declared a winner in STV
 
-- Tractable Election: < 9 candidates allows exact strategy computation
-  For larger elections, we use remove_irrelevent() to reduce candidate count
+- Tractable Election: < MAX_TRACTABLE_CANDIDATES allows exact strategy computation
+  For larger elections, we use remove_irrelevant() to reduce candidate count
 
 - Collection: List of ballot states at each STV round (from STV_optimal_result_simple)
   collection[i] = ballot state after i events (eliminations + wins)
@@ -40,7 +40,8 @@ Paper References:
 
 from rcv_strategies.core.stv_irv import STV_optimal_result_simple
 from rcv_strategies.core.strategy import reach_any_winners_campaign, reach_any_winners_campaign_memoization, reach_any_winners_campaign_parallel
-from rcv_strategies.core.candidate_removal import remove_irrelevent, strict_support, predict_losses
+from rcv_strategies.core.candidate_removal import remove_irrelevant, strict_support, predict_losses
+from rcv_strategies.constants import MAX_TRACTABLE_CANDIDATES
 import time
 from copy import deepcopy
 from rcv_strategies.utils import helpers as utils
@@ -230,7 +231,7 @@ def process_ballot_counts_post_elim(ballot_counts, k, candidates, elim_cands, ch
     budget = budget_percent * sum(full_aggre_v_dict[cand] for cand in candidates) * 0.01
     print(budget)
     if check_removal_here:
-        candidates_reduced, group_remaining, stop = remove_irrelevent(
+        candidates_reduced, group_remaining, stop = remove_irrelevant(
             ballot_counts, rt, results[:keep_at_least], budget, ''.join(results), rigorous_check
         )
         
@@ -428,7 +429,7 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
         Maximum vote addition as percentage of total votes.
         Used for candidate removal and strategy bounds.
     check_removal_here : bool
-        If True, use remove_irrelevent() to reduce candidate count for tractability.
+        If True, use remove_irrelevant() to reduce candidate count for tractability.
     keep_at_least : int
         Minimum candidates to retain after removal (typically 7-8 for Portland k=3).
     rigorous_check : bool
@@ -462,7 +463,7 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
 
     Logic Flow:
     1. Run STV to get results order and collection
-    2. Call remove_irrelevent() to get tractable candidate set
+    2. Call remove_irrelevant() to get tractable candidate set
     3. Filter ballots to retained candidates only
     4. Check for early winners (candidates >= Q after filtering)
 
@@ -481,8 +482,8 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
         Compute strategies directly on filtered_data with full k seats.
 
     Tractability Constraint:
-    - Strategy computation is only tractable for < 9 candidates
-    - If len(candidates_retained) >= 9, return empty strategies
+    - Strategy computation is only tractable for < MAX_TRACTABLE_CANDIDATES
+    - If len(candidates_retained) >= MAX_TRACTABLE_CANDIDATES, return empty strategies
     - This signals webapp's divide-and-conquer to try lower budget
 
     Paper References:
@@ -550,7 +551,7 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
     group_remaining = ''
 
     if check_removal_here:
-        candidates_reduced, group_remaining, stop = remove_irrelevent(
+        candidates_reduced, group_remaining, stop = remove_irrelevant(
             ballot_counts, rt, results[:keep_at_least], budget, ''.join(results), rigorous_check
         )
         if stop:
@@ -618,8 +619,8 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
             # Step C:  If loopy exhausted, reset - this budget doesn't work
             #
             # TRACTABILITY CONSTRAINT:
-            # Strategy computation only works for < 9 candidates.
-            # If len(ordered_test) >= 9, skip computation and return empty.
+            # Strategy computation only works for < MAX_TRACTABLE_CANDIDATES.
+            # If len(ordered_test) >= MAX_TRACTABLE_CANDIDATES, skip computation and return empty.
             # This signals webapp's binary search to try a lower budget.
             #
             # Paper Reference: Theorem 4.2 "Irrelevant Extension"
@@ -661,8 +662,8 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
                                 # Filter candidates_retained to only those in collection
                                 valid_cands = [c for c in candidates_retained if c in active_in_collection]
                                 ordered_test = sorted(valid_cands, key=lambda x: results.index(x))
-                                # Only compute if tractable (< 9 candidates)
-                                if len(ordered_test) < 9:
+                                # Only compute if tractable (< MAX_TRACTABLE_CANDIDATES)
+                                if len(ordered_test) < MAX_TRACTABLE_CANDIDATES:
                                     strats_frame = reach_any_winners_campaign_parallel(
                                         ordered_test, k, Q, ballot_counts_short, budget,
                                         c_l=[], zeros=0, allowed_length=allowed_length
@@ -685,8 +686,8 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
                                 if check_strats:
                                     # active_back is already filtered to valid candidates
                                     ordered_test = sorted(active_back, key=lambda x: results.index(x))
-                                    # Only compute if tractable (< 9 candidates)
-                                    if len(ordered_test) < 9:
+                                    # Only compute if tractable (< MAX_TRACTABLE_CANDIDATES)
+                                    if len(ordered_test) < MAX_TRACTABLE_CANDIDATES:
                                         strats_frame = reach_any_winners_campaign_parallel(
                                             ordered_test, k, Q, ballot_counts_back, budget,
                                             c_l=[], zeros=0, allowed_length=allowed_length
@@ -733,8 +734,8 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
                                         ballot_counts_short = collection[small_num][0]
                                         test = [rt[i][0] for i in range(small_num, len(rt))]
                                         ordered_test = sorted(test, key=lambda x: results.index(x))
-                                        # Only compute if tractable (< 9 candidates)
-                                        if len(ordered_test) < 9:
+                                        # Only compute if tractable (< MAX_TRACTABLE_CANDIDATES)
+                                        if len(ordered_test) < MAX_TRACTABLE_CANDIDATES:
                                             # CRITICAL: Use k-1 for remaining seats after early winner
                                             # The early winner already occupies one seat
                                             strats_frame = reach_any_winners_campaign_parallel(
@@ -750,7 +751,7 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
                     if not stv_viable:
                         current_keep = len(candidates_retained) - 1
                         while current_keep > k and not stv_viable:
-                            cands_try, group_try, stop_try = remove_irrelevent(
+                            cands_try, group_try, stop_try = remove_irrelevant(
                                 ballot_counts, rt, results[:current_keep], budget,
                                 ''.join(results), rigorous_check
                             )
@@ -776,8 +777,8 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
                                         active_try = set(key[0] for key in bc_try.keys() if key)
                                         valid_cands = [c for c in cands_try if c in active_try]
                                         ordered_test = sorted(valid_cands, key=lambda x: results.index(x))
-                                        # Only compute if tractable (< 9 candidates)
-                                        if len(ordered_test) < 9:
+                                        # Only compute if tractable (< MAX_TRACTABLE_CANDIDATES)
+                                        if len(ordered_test) < MAX_TRACTABLE_CANDIDATES:
                                             strats_frame = reach_any_winners_campaign_parallel(
                                                 ordered_test, k, Q, bc_try, budget,
                                                 c_l=[], zeros=0, allowed_length=allowed_length
@@ -802,8 +803,8 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
                                                 bc_small = collection[sn_try][0]
                                                 test = [rt[i][0] for i in range(sn_try, len(rt))]
                                                 ordered_test = sorted(test, key=lambda x: results.index(x))
-                                                # Only compute if tractable (< 9 candidates)
-                                                if len(ordered_test) < 9:
+                                                # Only compute if tractable (< MAX_TRACTABLE_CANDIDATES)
+                                                if len(ordered_test) < MAX_TRACTABLE_CANDIDATES:
                                                     # Use k-1 for remaining seats
                                                     strats_frame = reach_any_winners_campaign_parallel(
                                                         ordered_test, k - 1, Q, bc_small, budget,
@@ -826,8 +827,8 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
             if not early_winner_handled and check_strats:
                 if all(agg_v_dict.get(cand, 0) < Q for cand in candidates_retained):
                     # No immediate winners, compute strategies for all retained candidates
-                    # Only compute if tractable (< 9 candidates)
-                    if len(candidates_retained) < 9:
+                    # Only compute if tractable (< MAX_TRACTABLE_CANDIDATES)
+                    if len(candidates_retained) < MAX_TRACTABLE_CANDIDATES:
                         strats_frame = reach_any_winners_campaign_parallel(
                             candidates_retained, k, Q, filtered_data, budget,
                             c_l=[], zeros=0, allowed_length=allowed_length
@@ -841,13 +842,13 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
 
             strats_frame_percent = convert_to_percentage(strats_frame, total_votes)
         else:
-            # No candidates removed by remove_irrelevent at initial keep_at_least.
+            # No candidates removed by remove_irrelevant at initial keep_at_least.
             # Try loopy: decrease keep_at_least until removal succeeds
             if check_strats and k > 1:
                 current_keep = keep_at_least - 1
                 loopy_success = False
                 while current_keep > k and not loopy_success:
-                    cands_try, group_try, stop_try = remove_irrelevent(
+                    cands_try, group_try, stop_try = remove_irrelevant(
                         ballot_counts, rt, results[:current_keep], budget,
                         ''.join(results), rigorous_check
                     )
@@ -866,8 +867,8 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
                                 active_try = set(key[0] for key in bc_try.keys() if key)
                                 valid_cands = [c for c in cands_try if c in active_try]
                                 ordered_test = sorted(valid_cands, key=lambda x: results.index(x))
-                                # Only compute if tractable (< 9 candidates)
-                                if len(ordered_test) < 9:
+                                # Only compute if tractable (< MAX_TRACTABLE_CANDIDATES)
+                                if len(ordered_test) < MAX_TRACTABLE_CANDIDATES:
                                     strats_frame = reach_any_winners_campaign_parallel(
                                         ordered_test, k, Q, bc_try, budget,
                                         c_l=[], zeros=0, allowed_length=allowed_length
@@ -888,8 +889,8 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
                                             bc_small = collection[sn_try][0]
                                             test = [rt[i][0] for i in range(sn_try, len(rt))]
                                             ordered_test = sorted(test, key=lambda x: results.index(x))
-                                            # Only compute if tractable (< 9 candidates)
-                                            if len(ordered_test) < 9:
+                                            # Only compute if tractable (< MAX_TRACTABLE_CANDIDATES)
+                                            if len(ordered_test) < MAX_TRACTABLE_CANDIDATES:
                                                 # Use k-1 for remaining seats
                                                 strats_frame = reach_any_winners_campaign_parallel(
                                                     ordered_test, k - 1, Q, bc_small, budget,
@@ -1029,21 +1030,21 @@ def process_bootstrap_samples(k, candidates_mapping, bootstrap_samples_dir, boot
 
         # Handle candidate removal based on approach
         if not loopy_removal:
-            candidates_reduced, group, stop = remove_irrelevent(
+            candidates_reduced, group, stop = remove_irrelevant(
                 ballot_counts, rt, results[:keep_at_least], budget, ''.join(candidates), rigorous_check
             )
         else:
             # Start with original keep_at_least value and decrease until removal fails
             current_keep = keep_at_least
             while current_keep >= k:
-                candidates_reduced, group, stop = remove_irrelevent(
+                candidates_reduced, group, stop = remove_irrelevant(
                     ballot_counts, rt, results[:current_keep], budget, ''.join(candidates), rigorous_check
                 )
 
                 if not stop:
                     # If removal failed, revert to previous successful value
                     current_keep += 1
-                    candidates_reduced, group, stop = remove_irrelevent(
+                    candidates_reduced, group, stop = remove_irrelevant(
                         ballot_counts, rt, results[:current_keep], budget, ''.join(candidates), rigorous_check
                     )
                     break
@@ -1084,8 +1085,8 @@ def process_bootstrap_samples(k, candidates_mapping, bootstrap_samples_dir, boot
                                 bc_small = collection[small_election_number][0]
                                 test = [rt[i][0] for i in range(small_election_number, len(rt))]
                                 ordered_test = sorted(test, key=lambda x: results.index(x))
-                                # Only compute if tractable (< 9 candidates)
-                                if len(ordered_test) < 9:
+                                # Only compute if tractable (< MAX_TRACTABLE_CANDIDATES)
+                                if len(ordered_test) < MAX_TRACTABLE_CANDIDATES:
                                     # Use k-1 for remaining seats
                                     strats_frame = reach_any_winners_campaign(
                                         ordered_test, k - 1, Q, bc_small, budget, allowed_length=allowed_length
@@ -1097,8 +1098,8 @@ def process_bootstrap_samples(k, candidates_mapping, bootstrap_samples_dir, boot
                 
                 # If no immediate winners, check strategies for all remaining candidates
                 if all(agg_v_dict[cand_winner] < Q for cand_winner in candidates_reduced):
-                    # Only compute if tractable (< 9 candidates)
-                    if len(candidates_reduced) < 9:
+                    # Only compute if tractable (< MAX_TRACTABLE_CANDIDATES)
+                    if len(candidates_reduced) < MAX_TRACTABLE_CANDIDATES:
                         strats_frame = reach_any_winners_campaign(
                             candidates_reduced, k, Q, filtered_data, budget, allowed_length= allowed_length
                         )
@@ -1128,7 +1129,7 @@ def process_bootstrap_samples(k, candidates_mapping, bootstrap_samples_dir, boot
 #
 # These functions implement Theorem 4.2 "Irrelevant Extension" from the paper.
 #
-# When we use remove_irrelevent() to eliminate candidates, a retained candidate
+# When we use remove_irrelevant() to eliminate candidates, a retained candidate
 # may exceed quota Q in the filtered ballot state. This function checks whether
 # this early winner's position is "robust" - meaning none of the removed
 # candidates could have prevented their win, even with budget-sized additions.

@@ -35,7 +35,7 @@ import pandas as pd
 from string import ascii_uppercase, ascii_lowercase
 
 from rcv_strategies.core.stv_irv import STV_optimal_result_simple
-from rcv_strategies.core.candidate_removal import remove_irrelevent
+from rcv_strategies.core.candidate_removal import remove_irrelevant
 from rcv_strategies.utils.helpers import get_new_dict, return_main_sub
 
 # Path to dataverse files - comprehensive RCV election dataset
@@ -142,7 +142,7 @@ def find_tractable_threshold(csv_path, target_candidates=8, k=1):
     # Binary search for threshold
     def can_reduce_at_budget(budget_pct):
         budget = budget_pct * total_votes / 100
-        candidates_reduced, group, success = remove_irrelevent(
+        candidates_reduced, group, success = remove_irrelevant(
             ballot_counts, rt, results[:target_candidates], budget, ''.join(results), rigorous_check=True
         )
         return success and len(candidates_reduced) <= target_candidates

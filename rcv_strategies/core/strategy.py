@@ -40,15 +40,16 @@ For multi-winner (k=3):
 Tractability:
 -------------
 Strategy computation is exponential in candidate count.
-CONSTRAINT: Only tractable for < 9 candidates.
+CONSTRAINT: Only tractable for < MAX_TRACTABLE_CANDIDATES candidates.
 
-For larger elections, use remove_irrelevent() (candidate_removal.py) to reduce
+For larger elections, use remove_irrelevant() (candidate_removal.py) to reduce
 the candidate set before calling strategy functions.
 
 Paper Reference: Section 3 "Strategy Computation Algorithm"
 """
 
 from copy import deepcopy
+from rcv_strategies.constants import MAX_TRACTABLE_CANDIDATES
 from rcv_strategies.utils.helpers import (
     get_new_dict,
     clean_aggre_dict_diff,
@@ -912,14 +913,20 @@ def reach_any_winners_campaign_parallel(candidates, k, Q, ballot_counts, budget,
         allowed_length=allowed_length
     )
     
-    # Process in parallel
-    with Pool(processes=None) as pool:
+    # Process in parallel with explicit cleanup for Streamlit environment
+    pool = None
+    try:
+        pool = Pool(processes=None)
         all_results = pool.map(process_func, all_combinations)
-    
-    # Process results
-    for result in all_results:
-        if result is not None:
-            comb_key, value = result
-            strats_frame[comb_key] = value
-    
-    return {x: y for x, y in strats_frame.items() if y[0] >= 0}
+
+        # Process results
+        for result in all_results:
+            if result is not None:
+                comb_key, value = result
+                strats_frame[comb_key] = value
+
+        return {x: y for x, y in strats_frame.items() if y[0] >= 0}
+    finally:
+        if pool is not None:
+            pool.terminate()  # Kill workers immediately
+            pool.join()       # Wait for them to actually stop
