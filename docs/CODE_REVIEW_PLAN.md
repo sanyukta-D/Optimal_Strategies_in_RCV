@@ -1,8 +1,75 @@
 # Code Review & Documentation Plan
 
-## Status: COMPLETED
+## Status: DOCUMENTATION COMPLETED, ONE BUG TO FIX
 
 Documentation improvements have been implemented across all key files.
+
+---
+
+## CRITICAL BUG: Zombie Multiprocessing Workers
+
+### Problem
+When running large elections (e.g., Portland District 1 with 8 candidates), the `reach_any_winners_campaign_parallel()` function spawns 8 worker processes. These workers do NOT terminate properly when:
+- User navigates away from the page
+- Streamlit reruns the script (widget change)
+- Analysis is interrupted
+- Browser tab is closed
+
+**Symptoms:**
+- Laptop fan runs continuously after analysis completes
+- `ps aux | grep streamlit` shows many Python processes at 60-100% CPU
+- Processes accumulate over time (found 8+ zombie workers using 500%+ CPU total)
+
+### Root Cause
+In `rcv_strategies/core/strategy.py`, the `Pool` object is created but not properly cleaned up:
+
+```python
+# CURRENT CODE (problematic) - around line 240
+pool = Pool(processes=8)
+results = pool.map(worker_function, tasks)
+# No pool.terminate() or pool.join() - workers become orphans!
+```
+
+### Solution
+Wrap multiprocessing in proper try/finally with cleanup:
+
+```python
+# FIXED CODE
+from multiprocessing import Pool
+import atexit
+
+def reach_any_winners_campaign_parallel(...):
+    pool = None
+    try:
+        pool = Pool(processes=8)
+        results = pool.map(worker_function, tasks)
+        return results
+    finally:
+        if pool is not None:
+            pool.terminate()  # Kill workers immediately
+            pool.join()       # Wait for them to actually stop
+```
+
+Or use context manager (cleaner):
+
+```python
+def reach_any_winners_campaign_parallel(...):
+    with Pool(processes=8) as pool:
+        results = pool.map(worker_function, tasks)
+    # Pool automatically terminated when exiting 'with' block
+    return results
+```
+
+### Files to Modify
+- `rcv_strategies/core/strategy.py`: Fix `reach_any_winners_campaign_parallel()` function
+
+### Temporary Workaround
+Until fixed, users should:
+1. Always press Ctrl+C in terminal before closing browser
+2. Check for zombies: `ps aux | grep streamlit`
+3. Kill all if needed: `pkill -9 -f streamlit`
+
+---
 
 **Repository:** https://github.com/sanyukta-D/Optimal_Strategies_in_RCV
 
