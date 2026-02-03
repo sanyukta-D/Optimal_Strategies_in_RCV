@@ -1,4 +1,28 @@
 # portland_analysis.py
+
+'''
+\section{2024 Portland City Council Elections: Details} \label{app:portland}
+For this case study, we utilized the official cast vote record (CVR) released in December 2024. The record included improperly marked ballots, which were processed in accordance with the official ranked-choice voting (RCV) ballot adjudication procedures \cite{MultnomahCounty2024Turnout}. Each election followed the single transferable vote (STV) rules, electing exactly three winners using the Droop quota of 25\% \citep{multnomah_rcv2025}.
+Applying \Cref{thm: stvprotocol}, our structural framework is applicable to analyzing these elections. Using our algorithms, we examined strategic behavior across all four elections. Our methodology follows the format established in the Republican primary case study in \Cref{app: casestudies}. Below, we provide a brief analysis of each district's elections and the subsequent bootstrap analysis.
+
+\subsection{District 1}\label{app:portland_dis1}
+
+District 1 includes 16 candidates, with the first candidate winning in the 13th round following the elimination of 11 candidates. Given \(n = 16\) and up to \(k = 3\) winners, the total number of possible orders is \(16!\), and the number of possible sequences is \(\sum_{j=1}^3 \binom{16}{j} = 696\). To analyze this district, we apply the methodology of \Cref{thm: remove_irrelevant_candidates} as detailed in \Cref{app: perfect_info}. If the standard removal criterion is not met for a bottom group \(L\), we further check whether the budget can preserve the candidate in \(L\) with the highest Strict-Support from elimination in the next round, thereby potentially influencing two eliminations simultaneously.
+For \(B = 4.47\%\), these steps remove 8 candidates; among the remaining 8, only 7 are able to win by adding up to 4.47\% of additional votes. These are the highest allocation numbers for successful candidate removal. Note that candidate H, the 8th candidate, is included in the set of relevant candidates but remains unable to secure a win through strategic additions. This occurs because H has the potential to attain higher positions in the ranking, thereby influencing the election dynamics, yet ultimately falls short of meeting the necessary threshold to win. The subsequent strategic analysis of this set, performed via \Cref{thm: poly_efforts_B}, takes approximately 814 minutes on a modern laptop. The resulting optimal strategies for 7 candidates are presented in \Cref{tab:dis1_strats}. Reducing \(B\) to 4.17\% allows the removal of 9 candidates, cutting the corresponding analysis time to about 12 minutes.
+
+For District 1 bootstrap analysis, we generated 1,000 samples using sampling with replacement, similar to our analysis in \Cref{sec: casestudies}. We then applied a slightly lower budget limit of \(B = 4\%\), as 4.17\% is precise for the original dataset. Under these conditions, 9 candidates were removed in 807 samples and 8 in 190 samples, leaving 3 samples unsolved. From those with 9-candidate removal, we randomly selected 84 for in-depth strategic analysis, summarized in \Cref{tab:summary_dis1}. This step required a total of 865 minutes on a modern laptop.
+
+\subsection{Districts 2, 3 and 4}
+District 2 had 22 candidates, with the first win occurring in the 20th round after the elimination of 18 candidates. The subsequent analysis, including both the election data and bootstrap procedures, follows the same methodology as in District 1 (\Cref{app:portland_dis1}). Given the lower competitiveness of the District 2 election, the algorithms achieved a higher margin in eliminating irrelevant candidates, reaching up to 6.5\% while removing 18 candidates.
+We analyzed 100 bootstrap samples with a bound of 6\% on allowed additions. The candidate-elimination algorithm was effective for all samples, reducing the number of relevant candidates to four in each case. Candidate D secured a place in the winning set in 85\% of the samples, requiring an average of 5.64\% additional votes.
+
+
+In Districts 3 and 4, the first election winner emerged in rounds 20 and 7, following the elimination of 18 and 5 candidates, respectively. In both cases, the first win occurred while at least 11 candidates remained active in the election. 
+%This has two key implications: First, the remaining active candidates had vote totals comparable to each other and to those of the eliminated candidates, limiting the ability to eliminate candidates from the lower group despite allowed additions. Formally, the strict-support of the eliminated candidates remained close to the aggregated votes of the active candidates. Second, since a winner had already been determined, \Cref{thm: remove_irrelevant_candidates} could not be directly applied to later rounds, restricting its use for further candidate elimination.
+Thus, for Districts 3 and 4, we apply \Cref{thm: irrelevant_extension}, which enables candidate elimination even when the removal set includes an election winner. Using the corresponding algorithm, we determine the highest number of additional votes—i.e., the bound—that satisfies the elimination condition. The computed bounds for Districts 3 and 4 are 12.36\% and 9.6\%, respectively.
+For bootstrap samples, we used 11.5\% bound for District 3, and 9\% for District 4 and analyzed 100 bootstrap samples. Within these bounds, the algorithms achieve 100\% efficiency in eliminating irrelevant candidates and analyzing samples in both districts.
+
+'''
 # Analysis for Portland City Council data
 
 # Standard library imports
@@ -150,3 +174,5 @@ if __name__ == "__main__":
 
     #dis2 : 5.6 vs 6.5 with rigor
     #dis1 : 4.17 vs 4.7 with rigor
+
+
