@@ -449,6 +449,28 @@ if uploaded_file is not None:
             status = st.empty()
 
             try:
+                # ============================================================
+                # WEBAPP ANALYSIS PIPELINE
+                # ============================================================
+                #
+                # Overview:
+                # 1. Convert CSV to ballot_counts with arbitrary letter mapping
+                # 2. Run STV to get social choice order (winner first)
+                # 3. REMAP so A=winner, B=runner-up, etc. (intuitive display)
+                # 4. Run STV again on remapped data
+                # 5. Compute strategies using process_ballot_counts_post_elim_no_print
+                #
+                # For large elections (> 8 candidates):
+                # - Strategy computation is intractable
+                # - Use binary search to find highest budget where removal works
+                # - remove_irrelevent() reduces to tractable set (< 9 candidates)
+                #
+                # For multi-winner (k > 1):
+                # - May encounter "early winners" exceeding quota after removal
+                # - Uses "small election method" with k-1 seats
+                # - See case_study_helpers.py for detailed logic
+                # ============================================================
+
                 # Step 1: Initial ballot counts with alphabetical mapping
                 status.text("Converting ballots...")
                 progress.progress(10)
@@ -503,32 +525,42 @@ if uploaded_file is not None:
                 progress.progress(60)
 
                 effective_keep_at_least = keep_at_least
-                max_for_strats = 8
+                max_for_strats = 8  # TRACTABILITY LIMIT: < 9 candidates for exact strategies
                 n_candidates = len(candidates_list)
 
-                # Pre-eliminate weakest candidates (fallback when removal fails
-                # at every budget). Weakest = last in results_alphabetical.
-                if n_candidates > max_for_strats:
-                    n_to_elim = n_candidates - max_for_strats
-                    elim_cands = list(results_alphabetical[-n_to_elim:])
-                else:
-                    elim_cands = []
+                # ============================================================
+                # DIVIDE-AND-CONQUER: Finding Optimal Budget Threshold
+                # ============================================================
+                #
+                # PROBLEM: With many candidates (> 8), direct strategy computation
+                # is intractable. We need remove_irrelevent() to reduce the set,
+                # but removal depends on budget - higher budget = more removal.
+                #
+                # SOLUTION: Binary search for the highest budget where:
+                # 1. remove_irrelevent() succeeds (stop=True)
+                # 2. retained candidates <= max_for_strats (tractable)
+                #
+                # Two-Phase Approach:
+                # Phase 1: Try full candidate set (works for most elections)
+                #          Portland Dis 1,2,3 succeed with this phase
+                # Phase 2: If Phase 1 fails (removal too aggressive), pre-filter
+                #          to top N candidates and retry. Portland Dis 4 needs this.
+                #
+                # The computed_threshold is then used for final strategy computation.
+                # ============================================================
+                effective_bc = ballot_counts
+                effective_cands = candidates_list
 
                 computed_threshold = budget_percent
 
                 if n_candidates > max_for_strats and check_strategies:
-                    # Large election: find the reduction threshold — the highest
-                    # budget at which candidate removal produces a tractable set.
                     status.text("Finding reduction threshold...")
 
-                    def removal_works(test_budget):
+                    def removal_works_with(bc, cands, test_budget):
                         """Quick check (no strategy computation)."""
                         r = process_ballot_counts_post_elim_no_print(
-                            ballot_counts=ballot_counts,
-                            k=k,
-                            candidates=candidates_list,
-                            elim_cands=elim_cands,
-                            check_strats=False,
+                            ballot_counts=bc, k=k, candidates=cands,
+                            elim_cands=[], check_strats=False,
                             budget_percent=test_budget,
                             check_removal_here=True,
                             keep_at_least=effective_keep_at_least,
@@ -537,32 +569,53 @@ if uploaded_file is not None:
                         )
                         removed = r.get("candidates_removed", [])
                         retained = r.get("candidates_retained", [])
-                        return bool(removed) and len(retained) > k and len(retained) <= max_for_strats
+                        return bool(removed) and len(retained) >= k and len(retained) <= max_for_strats
 
-                    if removal_works(budget_percent):
-                        computed_threshold = budget_percent
-                    else:
-                        # Binary search for highest budget where removal succeeds
+                    def find_threshold(bc, cands):
+                        """Binary search for highest working budget."""
+                        if removal_works_with(bc, cands, budget_percent):
+                            return budget_percent
                         lo, hi = 0.5, budget_percent
                         best = None
                         while hi - lo > 0.5:
                             mid = round((lo + hi) / 2, 1)
-                            if removal_works(mid):
+                            if removal_works_with(bc, cands, mid):
                                 best = mid
                                 lo = mid
                             else:
                                 hi = mid
-                        if best is not None:
-                            computed_threshold = best
+                        return best
+
+                    # Phase 1: try full candidate set
+                    threshold = find_threshold(ballot_counts, candidates_list)
+
+                    if threshold is not None:
+                        # Full set works (Dis 1, 2, 3)
+                        computed_threshold = threshold
+                        effective_bc = ballot_counts
+                        effective_cands = candidates_list
+                    elif k > 1 and n_candidates > max_for_strats + 2:
+                        # Phase 2: pre-filter and retry (Dis 4)
+                        n_to_keep = max_for_strats + 2
+                        elim_cands = list(results_alphabetical[n_to_keep:])
+                        elim_string = ''.join(elim_cands)
+                        filtered_bc = {}
+                        for key, value in ballot_counts.items():
+                            new_key = ''.join(c for c in key if c not in elim_string)
+                            if new_key:
+                                filtered_bc[new_key] = filtered_bc.get(new_key, 0) + value
+                        effective_bc = filtered_bc
+                        effective_cands = [c for c in candidates_list if c not in elim_cands]
+                        threshold2 = find_threshold(effective_bc, effective_cands)
+                        if threshold2 is not None:
+                            computed_threshold = threshold2
 
                     # Compute strategies at the reduction threshold
                     progress.progress(60)
                     status.text(f"Computing strategies at {computed_threshold:.1f}% threshold...")
                     analysis_result = process_ballot_counts_post_elim_no_print(
-                        ballot_counts=ballot_counts,
-                        k=k,
-                        candidates=candidates_list,
-                        elim_cands=elim_cands,
+                        ballot_counts=effective_bc, k=k,
+                        candidates=effective_cands, elim_cands=[],
                         check_strats=True,
                         budget_percent=computed_threshold,
                         check_removal_here=True,
@@ -571,12 +624,10 @@ if uploaded_file is not None:
                         spl_check=(k > 1)
                     )
                 else:
-                    # Small election (≤ 8 candidates): compute strategies directly
+                    # Small election (≤ max_for_strats candidates): compute strategies directly
                     analysis_result = process_ballot_counts_post_elim_no_print(
-                        ballot_counts=ballot_counts,
-                        k=k,
-                        candidates=candidates_list,
-                        elim_cands=[],
+                        ballot_counts=effective_bc, k=k,
+                        candidates=effective_cands, elim_cands=[],
                         check_strats=check_strategies,
                         budget_percent=budget_percent,
                         check_removal_here=False,

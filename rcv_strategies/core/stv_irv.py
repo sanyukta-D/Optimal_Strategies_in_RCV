@@ -1,3 +1,77 @@
+"""
+Single Transferable Vote (STV) and Instant Runoff Voting (IRV) Implementations
+===============================================================================
+
+Repository: https://github.com/sanyukta-D/Optimal_Strategies_in_RCV
+
+This module implements core voting algorithms for Ranked Choice Voting elections.
+
+Key Functions:
+--------------
+- IRV_optimal_result(): Single-winner IRV election simulation
+- IRV_ballot_exhaust(): Track ballot exhaustion in single-winner IRV
+- STV_ballot_exhaust(): Track ballot exhaustion in multi-winner STV
+- STV_optimal_result_simple(): Multi-winner STV with collection tracking (MAIN FUNCTION)
+
+Key Data Structures:
+--------------------
+
+ballot_counts : dict
+    Maps ballot strings to vote counts.
+    Example: {'ABC': 100, 'BAC': 80, 'CAB': 60}
+    Meaning: 100 voters ranked A first, B second, C third
+
+rt (result trace) : list of [candidate, is_winner] pairs
+    Records each STV event in chronological order.
+    is_winner = 1 if candidate won (reached quota Q), 0 if eliminated.
+
+    Example: [['E', 0], ['D', 0], ['C', 0], ['A', 1], ['B', 1]]
+    Meaning: E eliminated, D eliminated, C eliminated, A won, B won
+
+    Usage: results, _ = return_main_sub(rt)
+           results = ['A', 'B', 'C', 'D', 'E']  # Social choice order
+
+dt (detailed trace) : list
+    Similar to rt with additional metadata for debugging.
+
+collection : list of (ballot_state, metadata) tuples
+    CRITICAL DATA STRUCTURE for multi-winner strategy computation.
+
+    collection[i] = ballot state after i STV events (eliminations + wins)
+    collection[0] = initial state (all candidates active)
+    collection[N] = state after N events
+
+    Each ballot_state is a dict mapping ballot strings to vote counts.
+    IMPORTANT: Vote counts may be fractional due to Droop surplus transfers.
+
+    Example (Portland Dis 4, k=3):
+    - 30 candidates total, A wins early in round 7
+    - small_num = 30 - 4 = 26 events to reach 4 retained candidates
+    - collection[26][0] = ballot state with A's surplus transferred to B, C, D, F
+    - Use collection[26] for strategy computation via "small election method"
+
+    Usage in case_study_helpers.py:
+        small_num = len(candidates) - len(candidates_retained)
+        ballot_counts_short = collection[small_num][0]
+        # Compute strategies on ballot_counts_short with k-1 seats
+        # (because early winner already occupies one seat)
+
+Quota Calculation:
+------------------
+Droop Quota: Q = floor(total_votes / (k + 1)) + 1
+
+For k=1 (single-winner): Q = total_votes / 2 + 1 (majority)
+For k=3 (Portland): Q = total_votes / 4 + 1 (~25%)
+
+When a candidate reaches Q, they win and their surplus (votes - Q) transfers
+to next preferences proportionally.
+
+Paper References:
+-----------------
+- "Optimal Strategies in Ranked Choice Voting" (STV algorithm, collection usage)
+- "Simpler Than You Think" (Practical interpretation of results)
+"""
+
 from copy import deepcopy
 from rcv_strategies.utils.helpers import get_new_dict
 
@@ -252,19 +326,65 @@ def STV_ballot_exhaust(cands, ballot_counts, k, Q):
 
 def STV_optimal_result_simple(cands, ballot_counts, k, Q):
     """
-    Compute the optimal social choice order for Single Transferable Vote (STV).
+    Compute STV election results with full state tracking (collection).
+
+    This is the MAIN STV function used throughout the codebase. It runs a full
+    STV election and returns not just the results, but a complete history of
+    ballot states at each round (the "collection").
 
     Args:
-        cands (list): List of candidates.
-        ballot_counts (dict): Dictionary where keys are ranked ballots (as strings) and values are counts.
-        k (int): Number of winners.
-        Q (float): Quota threshold for winning.
+        cands (list): List of candidate identifiers (e.g., ['A', 'B', 'C', ...])
+        ballot_counts (dict): Ballot strings to vote counts
+            Example: {'ABC': 100, 'BAC': 80} means 100 voters ranked A>B>C
+        k (int): Number of winners
+        Q (float): Droop quota (typically total_votes / (k+1) + 1)
 
     Returns:
-        tuple: Contains three elements:
-            - List of events with winners (1) and eliminations (0)
-            - Dictionary summarizing results for each candidate
-            - List of ballot states in each round
+        tuple: (rt, dt, collection)
+
+        rt : list of [candidate, is_winner] pairs
+            Result trace recording each event chronologically.
+            is_winner = 1 if candidate won (reached Q), 0 if eliminated.
+
+            Example: [['E', 0], ['D', 0], ['A', 1], ['C', 0], ['B', 1]]
+            Meaning: E eliminated, D eliminated, A won, C eliminated, B won
+
+            To get social choice order: results, _ = return_main_sub(rt)
+            results = ['A', 'B', 'C', 'D', 'E'] (winner first, last eliminated last)
+
+        dt : dict
+            Detailed trace mapping candidates to win/loss status (1 or 0).
+
+        collection : list of [ballot_state, round_number] pairs
+            CRITICAL: Tracks ballot state after each event.
+
+            collection[0] = [initial_ballot_counts, 0]
+            collection[i] = [ballot_state_after_i_events, i]
+
+            The ballot_state is a dict with potentially FRACTIONAL counts
+            due to Droop surplus transfers.
+
+            USAGE IN STRATEGY COMPUTATION:
+            When using the "small election method" for multi-winner elections:
+
+                # Number of events to reach retained candidate count
+                small_num = len(candidates) - len(candidates_retained)
+
+                # Get ballot state at that point
+                ballot_counts_short = collection[small_num][0]
+
+                # Compute strategies on this state with k-1 seats
+                # (early winner already occupies one seat)
+                strats = reach_any_winners_campaign(ordered_test, k-1, Q, ballot_counts_short, budget)
+
+    Example:
+        >>> rt, dt, collection = STV_optimal_result_simple(['A','B','C','D'], bc, k=2, Q=100)
+        >>> len(collection)
+        4  # Initial state + 3 events (2 winners, 1 eliminated, 1 final)
+        >>> collection[2][0]  # Ballot state after 2 events
+        {'BC': 45.5, 'CB': 30.2, ...}  # Note: fractional due to surplus transfer
+
+    Paper Reference: Section 2 "STV Background" in "Optimal Strategies in RCV"
     """
     candidates_remaining = deepcopy(cands)
     aggregated_votes = get_new_dict(ballot_counts)

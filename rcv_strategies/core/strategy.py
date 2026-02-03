@@ -1,3 +1,53 @@
+"""
+Strategy Computation for RCV Elections
+=======================================
+
+Repository: https://github.com/sanyukta-D/Optimal_Strategies_in_RCV
+
+This module computes optimal vote addition strategies for candidates in
+Ranked Choice Voting elections. Given a budget (max votes to add), it
+finds the minimum votes each candidate needs to win.
+
+Core Concept - Structures:
+--------------------------
+A "structure" specifies a complete election outcome:
+- main: The winners in order (e.g., 'AB' for k=2 means A wins first, then B)
+- sub: The elimination order for non-winners (e.g., 'DC' means D eliminated first)
+
+Algorithm:
+----------
+1. Enumerate all possible (main, sub) structures (winner combinations)
+2. For each structure, compute minimum vote additions needed to achieve it
+3. For each candidate, find minimum cost across all structures where they win
+4. Return mapping: candidate -> [minimum_cost, strategy_detail]
+
+Key Functions:
+--------------
+- reach_any_winners_campaign(): Find minimum votes for any winning set
+- reach_any_winners_campaign_parallel(): Parallelized version (faster)
+- process_campaign_STV(): Compute votes needed for a specific structure
+- add_campaign(): Calculate round-by-round vote additions
+
+Output Format:
+--------------
+For single-winner (k=1):
+    {'A': [0, {}], 'B': [150, {'B': 150}], 'C': [300, {'C': 300}]}
+
+For multi-winner (k=3):
+    {'ABC': [0, {}], 'ABD': [150, {'D': 150}], ...}
+    (Use convert_combination_strats_to_candidate_strats for per-candidate format)
+
+Tractability:
+-------------
+Strategy computation is exponential in candidate count.
+CONSTRAINT: Only tractable for < 9 candidates.
+
+For larger elections, use remove_irrelevent() (candidate_removal.py) to reduce
+the candidate set before calling strategy functions.
+
+Paper Reference: Section 3 "Strategy Computation Algorithm"
+"""
+
 from copy import deepcopy
 from rcv_strategies.utils.helpers import (
     get_new_dict,

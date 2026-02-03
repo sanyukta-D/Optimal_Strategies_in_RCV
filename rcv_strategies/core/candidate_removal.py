@@ -1,3 +1,63 @@
+"""
+Candidate Removal Functions for Tractable Strategy Computation
+===============================================================
+
+Repository: https://github.com/sanyukta-D/Optimal_Strategies_in_RCV
+
+PROBLEM:
+Strategy computation is exponential in candidate count. For > 8 candidates,
+direct computation is intractable (too slow and memory-intensive).
+
+SOLUTION:
+Remove candidates who provably cannot affect the election outcome within
+the given budget. This reduces the candidate set to a tractable size.
+
+Key Theorems (from "Optimal Strategies in RCV" paper):
+------------------------------------------------------
+
+Theorem 4.1 (Basic Removal):
+    A candidate C in the removal group can be removed if:
+    strict_support(C) < worst_retained_votes - budget
+
+    Where strict_support(C) = votes ranking C first among the removal group.
+    Intuition: Even if C gets all first-choice votes from the removal group,
+    they still can't catch up to the worst retained candidate within budget.
+
+Theorem 4.3 (Rigorous Check):
+    Even if basic removal fails, we can still remove C if adding budget
+    votes to C would not change who gets eliminated next. This handles
+    edge cases where C has substantial support but still cannot change
+    the winner order.
+
+Functions:
+----------
+- strict_support(): Calculate votes where candidate is ranked first in removal group
+- check_removal(): Verify if removal satisfies theorems (both basic and rigorous)
+- remove_irrelevent(): Iteratively remove candidates until no more can be removed
+- predict_losses(): Predict which candidates will definitely lose
+
+Usage in Strategy Computation:
+------------------------------
+    # In case_study_helpers.py
+    candidates_reduced, group, stop = remove_irrelevent(
+        ballot_counts, rt, results[:keep_at_least], budget, ''.join(results), rigorous_check
+    )
+
+    if stop:
+        # Removal succeeded - candidates_reduced is tractable (< 9 candidates)
+        # Compute strategies on this reduced set
+        strats = reach_any_winners_campaign(candidates_reduced, k, Q, filtered_data, budget)
+
+    # If stop=False, removal failed - try lower budget or smaller keep_at_least
+
+TRACTABILITY CONSTRAINT:
+    Strategy computation requires < 9 candidates.
+    If len(candidates_reduced) >= 9, the webapp's binary search
+    should try a lower budget to achieve more aggressive removal.
+
+Paper Reference: Section 4 "Candidate Removal" in "Optimal Strategies in RCV"
+"""
+
 from rcv_strategies.utils.helpers import get_new_dict
 from operator import itemgetter
 
@@ -135,18 +195,72 @@ def check_removal(candidates, group, ballot_counts, budget, rigorous_check=True)
 
 def remove_irrelevent(ballot_counts, rt, startcandidates, budget, fullgroup, rigorous_check=True):
     """
-    Remove irrelevant candidates iteratively.
-    
+    Iteratively remove candidates who cannot affect the election outcome.
+
+    Starting from startcandidates (typically top-k from STV results), this
+    function repeatedly tests if the remaining candidates can be removed.
+    If removal fails at current size, it shrinks the retained set by one
+    and retries, until either removal succeeds or no candidates remain.
+
+    Algorithm:
+    1. Start with startcandidates as the retained set
+    2. group = all candidates not in retained set
+    3. Call check_removal(retained, group, ballot_counts, budget)
+    4. If check fails, remove last candidate from retained set and retry
+    5. Continue until check passes or retained set is empty
+
     Args:
-        ballot_counts: Dictionary of ballots and their counts
-        rt: Unknown parameter (not used in function)
-        startcandidates: Initial list of candidates to consider
-        budget: Available budget
-        fullgroup: Complete set of all candidates
-        rigorous_check: Whether to perform the rigorous/advanced check
-        
+        ballot_counts : dict
+            Dictionary mapping ballot strings to vote counts
+        rt : list
+            Result trace from STV (used for ordering, passed for compatibility)
+        startcandidates : list
+            Initial candidates to try retaining (e.g., results[:keep_at_least])
+            Typically the top candidates from STV results
+        budget : float
+            Maximum vote addition in absolute votes (not percentage)
+            Calculated as: budget = budget_percent * total_votes * 0.01
+        fullgroup : str
+            String containing all candidate identifiers
+        rigorous_check : bool
+            If True, use Theorem 4.3 (rigorous check) for edge cases.
+            If False, only use Theorem 4.1 (basic check) - faster but less accurate.
+
     Returns:
-        Tuple of (remaining candidates, group of removed candidates, stop flag)
+        tuple: (candidates_retained, group_removed, stop)
+
+        candidates_retained : list
+            Candidates that must be kept for accurate strategy computation
+        group_removed : str
+            String of candidates that can be safely removed
+        stop : bool
+            True if removal succeeded (some candidates were removed)
+            False if removal failed (couldn't remove anyone within budget)
+
+    Example:
+        >>> # Portland Dis 4: 30 candidates, k=3, budget=6%
+        >>> candidates_retained, group, stop = remove_irrelevent(
+        ...     ballot_counts, rt, results[:8], budget, ''.join(results), True
+        ... )
+        >>> stop
+        True
+        >>> candidates_retained
+        ['A', 'B', 'C', 'D']  # Only 4 retained - tractable!
+        >>> len(group)
+        26  # 26 candidates can be removed
+
+    Usage in case_study_helpers.py:
+        if stop:
+            # Removal succeeded - filter ballots and compute strategies
+            filtered_data = filter_ballots(ballot_counts, group_removed)
+            strats = reach_any_winners_campaign(candidates_retained, k, Q, filtered_data, budget)
+        else:
+            # Removal failed - try lower budget (webapp's binary search)
+            return empty strategies to signal retry
+
+    Note: Function name has typo 'irrelevent' but kept for backwards compatibility.
+
+    Paper Reference: Algorithm 1 "Iterative Candidate Removal"
     """
     candidatesnew = startcandidates
     group = ''.join(char for char in fullgroup if char not in candidatesnew)

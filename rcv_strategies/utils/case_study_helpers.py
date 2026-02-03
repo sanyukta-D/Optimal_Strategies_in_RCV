@@ -1,3 +1,43 @@
+"""
+Case Study Helper Functions for RCV Strategy Analysis
+======================================================
+
+Repository: https://github.com/sanyukta-D/Optimal_Strategies_in_RCV
+
+This module provides utility functions for processing ballot data and computing
+optimal strategies in Ranked Choice Voting (RCV) elections, supporting both
+single-winner (IRV) and multi-winner (STV) elections.
+
+Key Concepts:
+-------------
+- ballot_counts: Dict mapping ballot strings to vote counts
+  Example: {'ABC': 100, 'BAC': 80} means 100 voters ranked A>B>C, 80 ranked B>A>C
+
+- Victory Gap: Additional votes (% of total) a candidate needs to join the winning set
+
+- Droop Quota: Q = total_votes / (k+1) + 1, where k = number of winners
+  A candidate must reach Q to be declared a winner in STV
+
+- Tractable Election: < 9 candidates allows exact strategy computation
+  For larger elections, we use remove_irrelevent() to reduce candidate count
+
+- Collection: List of ballot states at each STV round (from STV_optimal_result_simple)
+  collection[i] = ballot state after i events (eliminations + wins)
+  Used for "small election method" when handling early winners
+
+Key Functions:
+--------------
+- get_ballot_counts_df(): Convert CSV DataFrame to ballot_counts dictionary
+- process_ballot_counts_post_elim_no_print(): Main strategy computation (see detailed docs below)
+- permit_STV_removal(): Verify early winner removal is valid (Theorem: Irrelevant Extension)
+- convert_combination_strats_to_candidate_strats(): Convert multi-winner results to per-candidate format
+
+Paper References:
+-----------------
+- "Optimal Strategies in Ranked Choice Voting" (Strategy computation, candidate removal theorems)
+- "Simpler Than You Think: The Practical Dynamics of RCV" (Victory gaps, practical interpretation)
+"""
+
 from rcv_strategies.core.stv_irv import STV_optimal_result_simple
 from rcv_strategies.core.strategy import reach_any_winners_campaign, reach_any_winners_campaign_memoization, reach_any_winners_campaign_parallel
 from rcv_strategies.core.candidate_removal import remove_irrelevent, strict_support, predict_losses
@@ -232,19 +272,54 @@ def convert_to_percentage(item, total):
 
 def convert_combination_strats_to_candidate_strats(strats_frame, k, results):
     """
-    Convert combination-based strategies to candidate-based strategies.
+    Convert combination-based strategies to per-candidate strategies.
 
-    For multi-winner elections, reach_any_winners_campaign returns strategies
-    keyed by winner combinations (e.g., 'ABC', 'ABD'). This function converts
-    to per-candidate strategies for display.
+    For multi-winner STV (k > 1), reach_any_winners_campaign returns results
+    keyed by winner COMBINATIONS (e.g., 'ABC', 'ABD', 'ACD'). Each combination
+    represents a possible winning set, with cost = votes needed to achieve it.
+
+    This function converts to PER-CANDIDATE format for webapp display:
+    - Original winners (results[:k]) always get gap = 0
+    - Non-winners get minimum cost across all combinations that include them
+
+    Input Format (multi-winner, k=3):
+        {
+            'ABC': [0, {}],           # Current winners, cost=0
+            'ABD': [150, {'D': 150}], # D joins winners, needs 150 votes
+            'ACD': [200, {'C': 100, 'D': 100}], # Different combination
+            'BCD': [300, {'D': 300}], # A loses, B/C/D win
+        }
+
+    Output Format:
+        {
+            'A': [0.0, {}],           # Winner, gap=0
+            'B': [0.0, {}],           # Winner, gap=0
+            'C': [0.0, {}],           # Winner, gap=0
+            'D': [150, {'D': 150}],   # Non-winner, minimum cost to join
+        }
+
+    The minimum cost for D is 150 (from 'ABD' combination), not 200 or 300.
+
+    IMPORTANT: Original winners are determined from the FULL election (results[:k]),
+    not from the reduced state after candidate removal. This ensures:
+    - A, B, C always show gap=0 even if reduced state has different winners
+    - D's gap reflects actual votes needed to join the winning set
 
     Args:
-        strats_frame: Dict mapping winner combinations to [cost, additions]
-        k: Number of winners
-        results: Social choice order (first k are original winners)
+        strats_frame : dict
+            Raw output from reach_any_winners_campaign
+            Keys are winner combination strings, values are [cost, additions]
+        k : int
+            Number of winners
+        results : list
+            Social choice order from full election (results[:k] = actual winners)
 
     Returns:
-        Dict mapping individual candidates to [victory_gap, strategy_detail]
+        dict
+            Mapping individual candidates to [victory_gap, strategy_detail]
+            Used directly for webapp display
+
+    Paper Reference: Section 3.3 "Multi-Winner Strategy Interpretation"
     """
     if not strats_frame or k <= 1:
         # For single-winner, the format is already per-candidate
@@ -330,30 +405,101 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
                                     check_removal_here=False, keep_at_least=8, rigorous_check=True,
                                     spl_check=False, allowed_length=None):
     """
-    Process ballot counts after eliminating certain candidates.
+    Main strategy computation function for RCV elections.
+
+    This function computes victory gaps and optimal strategies for all candidates
+    in a Ranked Choice Voting election. It handles both single-winner (k=1) and
+    multi-winner (k>1) elections with sophisticated early winner handling.
 
     Parameters:
-      ballot_counts (dict): Dictionary of ballot counts
-      k (int): Number of winners to select
-      candidates (list): List of candidate identifiers
-      elim_cands (list): List of candidates to eliminate
-      check_strats (bool): Whether to check strategies (unused in return values)
-      budget_percent (float): Budget percentage for strategy calculation
-      check_removal_here (bool): Whether to check candidate removal
-      keep_at_least (int): Minimum number of candidates to keep
-      rigorous_check (bool): Whether to perform rigorous check in candidate removal
-      spl_check (bool): Whether to do special STV check for multi-winner early winners
-      allowed_length (int): Maximum length of ballot chains for strategy computation (default: None)
+    -----------
+    ballot_counts : dict
+        Dictionary mapping ballot strings to vote counts.
+        Example: {'ABC': 100, 'BAC': 80} means 100 voters ranked A>B>C
+    k : int
+        Number of winners (1 for IRV, >1 for STV)
+    candidates : list
+        List of candidate identifiers (e.g., ['A', 'B', 'C', 'D'])
+    elim_cands : list
+        Candidates to pre-eliminate (usually empty [])
+    check_strats : bool
+        If True, compute optimal strategies. If False, only compute results.
+    budget_percent : float
+        Maximum vote addition as percentage of total votes.
+        Used for candidate removal and strategy bounds.
+    check_removal_here : bool
+        If True, use remove_irrelevent() to reduce candidate count for tractability.
+    keep_at_least : int
+        Minimum candidates to retain after removal (typically 7-8 for Portland k=3).
+    rigorous_check : bool
+        If True, use Theorem 4.3 for edge cases in candidate removal.
+    spl_check : bool
+        If True, use special check in permit_STV_removal() for multi-winner.
+    allowed_length : int or None
+        Maximum ballot chain length for strategy computation.
 
     Returns:
-      dict: A dictionary with the following keys:
-            - "num_candidates": Total number of candidates
-            - "total_votes": Sum of votes for all candidates (before elimination)
-            - "quota": Calculated quota (Q)
-            - "candidates_removed": Number of candidates that can be removed (if applicable)
-            - "candidates_retained": Number of candidates retained after removal (if applicable)
-            - "winners_during_elims": List of candidates that hit the quota after elimination
-            - "overall_winning_order": Overall winning order from the STV process
+    --------
+    dict with keys:
+        - "num_candidates": Total candidate count
+        - "total_votes": Total vote count
+        - "quota": Droop quota Q
+        - "candidates_removed": List of removed candidates
+        - "candidates_retained": List of retained candidates
+        - "winners_during_elims": Candidates exceeding Q after filtering
+        - "Strategies": Dict mapping candidate -> [victory_gap, strategy_detail]
+        - "overall_winning_order": Social choice order from STV
+
+    Algorithm Overview (Multi-Winner k > 1):
+    ----------------------------------------
+    The key challenge is handling "early winners" - candidates who exceed quota Q
+    after candidate removal. This can be an artifact of one-shot ballot filtering
+    vs. actual STV round-by-round surplus transfers.
+
+    We use the `collection` data structure from STV_optimal_result_simple():
+    - collection[i] = ballot state after i STV events (eliminations + wins)
+    - This respects proper Droop surplus transfers
+
+    Logic Flow:
+    1. Run STV to get results order and collection
+    2. Call remove_irrelevent() to get tractable candidate set
+    3. Filter ballots to retained candidates only
+    4. Check for early winners (candidates >= Q after filtering)
+
+    If early winner exists (multi-winner only):
+        Step 0:  Check collection[small_num]. If no early winner there, use it directly.
+        Step 0b: If collection[small_num] has winner, check one step back.
+        Step A:  If collection has early winner, call permit_STV_removal().
+                 If permitted, use "small election method":
+                 - Get ballot state from collection[small_num]
+                 - Compute strategies for remaining candidates with k-1 seats
+                 - Add early winner back with gap = 0
+        Step B:  If permit fails, try "loopy" - decrease keep_at_least until viable.
+        Step C:  If loopy exhausted, reset - this budget doesn't work.
+
+    If no early winner:
+        Compute strategies directly on filtered_data with full k seats.
+
+    Tractability Constraint:
+    - Strategy computation is only tractable for < 9 candidates
+    - If len(candidates_retained) >= 9, return empty strategies
+    - This signals webapp's divide-and-conquer to try lower budget
+
+    Paper References:
+    - Theorem 4.1 (Candidate Removal): "Optimal Strategies in RCV"
+    - Theorem 4.2 (Irrelevant Extension): "Optimal Strategies in RCV"
+    - Small Election Method: Section 5.2 of the paper
+
+    Example Usage:
+    --------------
+    >>> result = process_ballot_counts_post_elim_no_print(
+    ...     ballot_counts={'ABC': 100, 'BAC': 80, 'CAB': 60},
+    ...     k=1, candidates=['A', 'B', 'C'], elim_cands=[],
+    ...     check_strats=True, budget_percent=10.0,
+    ...     check_removal_here=False
+    ... )
+    >>> result['Strategies']
+    {'A': [0.0, {}], 'B': [4.17, {'B': 4.17}], 'C': [12.5, {'C': 12.5}]}
     """
     # Create a filtered ballot count dictionary by removing eliminated candidates from keys.
     filtered_data = {}
@@ -411,7 +557,7 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
             # Removal succeeded - use whatever candidates were retained
             candidates_retained = candidates_reduced
             candidates_removed = [c for c in results if c not in candidates_retained]
-            group_remaining = ''.join(candidates_removed)
+            #group_remaining = ''.join(candidates_removed)
         else:
             # Removal failed - keep all candidates
             candidates_removed = []
@@ -421,7 +567,7 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
     strats_frame = {}
 
     # Check strategies if requested
-    if len(candidates) > 2 and check_strats:
+    if len(candidates) > 2:
         if len(candidates_retained) < 1:
             # Empty or single candidate - budget doesn't support keep_at_least
             # Return empty strategies so webapp's divide-and-conquer can try a lower budget
@@ -430,57 +576,264 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
         elif len(candidates_retained) >= 1 and len(candidates_retained) < len(candidates):
             # Some candidates were removed - filter ballots to only include retained candidates
             filtered_data = {}
-            elim_strings = ''.join(candidates_removed) if isinstance(candidates_removed, str) else ''.join(candidates_removed)
+            #elim_strings = ''.join(candidates_removed) if isinstance(candidates_removed, str) else ''.join(candidates_removed)
             for key, value in ballot_counts.items():
-                new_key = ''.join(char for char in key if char not in elim_strings)
+                new_key = ''.join(char for char in key if char not in group_remaining)
                 filtered_data[new_key] = filtered_data.get(new_key, 0) + value
             filtered_data.pop('', None)
 
             agg_v_dict = utils.get_new_dict(filtered_data)
 
             # ============================================================
-            # MULTI-WINNER EARLY WINNER HANDLING (from process_bootstrap_samples)
-            # If a candidate exceeds quota after removal, they win during elimination.
-            # We need to use the ballot state AFTER that win (with surplus transfers).
+            # MULTI-WINNER EARLY WINNER HANDLING (k > 1 only)
+            # ============================================================
+            #
+            # PROBLEM:
+            # After candidate removal, filtered_data combines all vote transfers
+            # at once (one-shot removal). A candidate may exceed quota Q here,
+            # but in the actual STV (which does round-by-round surplus transfers),
+            # that candidate may not have won yet at the corresponding round.
+            #
+            # SOLUTION: Use the `collection` data structure
+            # - collection[i] = ballot state after i STV events
+            # - small_num = len(candidates) - len(candidates_retained)
+            # - collection[small_num] shows actual ballot state at that point
+            #
+            # KEY INSIGHT: filtered_data vs collection[small_num]
+            # - filtered_data: One-shot removal, all votes transfer immediately
+            # - collection[small_num]: Actual STV state with proper Droop transfers
+            # Both have the SAME candidates retained, but DIFFERENT vote distributions
+            #
+            # LOGIC FLOW:
+            # Step 0:  Check collection[small_num]. If no early winner, use directly.
+            #          Example: Portland Dis 2 - 5 retained, no early winner in collection
+            # Step 0b: If collection[small_num] has winner, try one step back.
+            # Step A:  If collection has early winner, call permit_STV_removal().
+            #          If permitted, use "SMALL ELECTION METHOD":
+            #          - Treat early winner as already elected
+            #          - Compute strategies for remaining k-1 seats
+            #          - Add early winner back with gap = 0
+            #          Example: Portland Dis 4 - A wins early, compute for B,C,D with k=2
+            # Step B:  If permit fails, try "loopy" - smaller candidate pools
+            # Step C:  If loopy exhausted, reset - this budget doesn't work
+            #
+            # TRACTABILITY CONSTRAINT:
+            # Strategy computation only works for < 9 candidates.
+            # If len(ordered_test) >= 9, skip computation and return empty.
+            # This signals webapp's binary search to try a lower budget.
+            #
+            # Paper Reference: Theorem 4.2 "Irrelevant Extension"
             # ============================================================
             early_winner_handled = False
 
-            if k > 1:  # Multi-winner election
-                for cand_winner in candidates_retained:
-                    if agg_v_dict.get(cand_winner, 0) >= Q:
-                        # This candidate wins during elimination of irrelevant candidates
-                        removal_permitted = permit_STV_removal(
-                            cand_winner, ballot_counts, Q, candidates_retained,
-                            group_remaining, budget_percent, spl_check=spl_check
-                        )
+            if k > 1:  # Multi-winner only — k=1 skips entirely
+                early_winners = [c for c in candidates_retained if agg_v_dict.get(c, 0) >= Q]
 
-                        if removal_permitted:
-                            # Use ballot state from the correct round in the collection
-                            # This accounts for surplus transfers from the early winner
-                            small_election_number = len(candidates) - len(candidates_retained)
-                            if small_election_number < len(collection):
-                                ballot_counts_short = collection[small_election_number][0]
-                                test = [rt[i][0] for i in range(small_election_number, len(rt))]
-                                ordered_test = sorted(test, key=lambda x: results.index(x))
-                                strats_frame = reach_any_winners_campaign_parallel(
-                                    ordered_test, k, Q, ballot_counts_short, budget,
-                                    c_l=[], zeros=0, allowed_length=allowed_length
-                                )
-                                # Update candidates_retained to match what was used for strategies
-                                candidates_retained = ordered_test
-                                early_winner_handled = True
+                if early_winners:
+                    stv_viable = False
+
+                    # --- Step 0: Check collection state for actual early winner ---
+                    #
+                    # The filtered_data combines all transfers at once, but in the
+                    # actual STV the winner may not have been declared yet at this point.
+                    #
+                    # Calculation: small_num = len(candidates) - len(candidates_retained)
+                    # This is the number of STV events (eliminations + wins) that have occurred
+                    # to reach a state with len(candidates_retained) candidates.
+                    #
+                    # Note: Event N in STV might be a WIN (not elimination). If so,
+                    # collection[N] is post-win state. We may need to check collection[N-1]
+                    # (one step back, before the win).
+                    small_num = len(candidates) - len(candidates_retained)
+                    if small_num < len(collection):
+                        ballot_counts_short = collection[small_num][0]
+                        agg_collection = utils.get_new_dict(ballot_counts_short)
+                        active_in_collection = set(key[0] for key in ballot_counts_short.keys() if key)
+                        collection_early = [c for c in candidates_retained if agg_collection.get(c, 0) >= Q]
+                        # Also check for retained candidates missing from collection
+                        # (already elected and removed from the pool — still an early winner)
+                        missing_from_collection = [c for c in candidates_retained if c not in active_in_collection]
+
+                        if not collection_early and not missing_from_collection:
+                            # No early winner in actual STV state — compute directly
+                            stv_viable = True
+                            if check_strats:
+                                # Filter candidates_retained to only those in collection
+                                valid_cands = [c for c in candidates_retained if c in active_in_collection]
+                                ordered_test = sorted(valid_cands, key=lambda x: results.index(x))
+                                # Only compute if tractable (< 9 candidates)
+                                if len(ordered_test) < 9:
+                                    strats_frame = reach_any_winners_campaign_parallel(
+                                        ordered_test, k, Q, ballot_counts_short, budget,
+                                        c_l=[], zeros=0, allowed_length=allowed_length
+                                    )
+                                    early_winner_handled = True
+
+                        elif small_num > 0:
+                            # Step 0b: collection[small_num] has early winner — check
+                            # one step back (before the win event).
+                            ballot_counts_back = collection[small_num - 1][0]
+                            agg_back = utils.get_new_dict(ballot_counts_back)
+                            active_back = sorted(set(key[0] for key in ballot_counts_back.keys() if key))
+                            back_early = [c for c in active_back if agg_back.get(c, 0) >= Q]
+
+                            if not back_early and all(c in active_back for c in candidates_retained):
+                                # One step back: no early winner, tractable set
+                                candidates_retained = active_back
+                                candidates_removed = [c for c in results if c not in active_back]
+                                stv_viable = True
+                                if check_strats:
+                                    # active_back is already filtered to valid candidates
+                                    ordered_test = sorted(active_back, key=lambda x: results.index(x))
+                                    # Only compute if tractable (< 9 candidates)
+                                    if len(ordered_test) < 9:
+                                        strats_frame = reach_any_winners_campaign_parallel(
+                                            ordered_test, k, Q, ballot_counts_back, budget,
+                                            c_l=[], zeros=0, allowed_length=allowed_length
+                                        )
+                                        early_winner_handled = True
+
+                    # --- Step A: Collection has early winner — try permit ---
+                    #
+                    # permit_STV_removal() checks if the early winner's position is
+                    # robust against the removed candidates. If True, we can treat
+                    # the early winner as already elected and compute for k-1 seats.
+                    #
+                    # SMALL ELECTION METHOD (when permit passes):
+                    # 1. Use collection[small_num] - ballot state with early winner's
+                    #    surplus already transferred via Droop method
+                    # 2. Get remaining candidates from rt[small_num:] (elimination trace)
+                    # 3. Compute strategies for these candidates competing for k-1 seats
+                    #    (because the early winner already took one seat)
+                    # 4. Add early winner back to strats_frame with gap = 0
+                    #
+                    # Example: Portland Dis 4 (k=3)
+                    # - A wins early in round 7 (after 5 eliminations)
+                    # - collection[26] has A's surplus transferred to B, C, D, F
+                    # - We compute strategies for B, C, D with k-1=2 seats
+                    # - A gets gap=0, D gets gap=1.09% (needs 835 votes to join top-3)
+                    #
+                    # WHY k-1? The early winner already occupies one seat. The remaining
+                    # candidates compete for the remaining k-1 seats. Using full k would
+                    # give wrong gaps (e.g., 0.325% instead of 1.09% for D).
+                    #
+                    # Guard: permit needs at least 2 retained candidates to be meaningful
+                    if not stv_viable and len(candidates_retained) > 1:
+                        for cw in early_winners:
+                            permitted = permit_STV_removal(
+                                cw, ballot_counts, Q, candidates_retained,
+                                group_remaining, budget_percent, spl_check=spl_check
+                            )
+                            if permitted:
+                                stv_viable = True
+                                if check_strats:
+                                    # Use collection[small_num] - state after early winner removed
+                                    # Get candidates from rt (elimination trace)
+                                    if small_num < len(collection):
+                                        ballot_counts_short = collection[small_num][0]
+                                        test = [rt[i][0] for i in range(small_num, len(rt))]
+                                        ordered_test = sorted(test, key=lambda x: results.index(x))
+                                        # Only compute if tractable (< 9 candidates)
+                                        if len(ordered_test) < 9:
+                                            # CRITICAL: Use k-1 for remaining seats after early winner
+                                            # The early winner already occupies one seat
+                                            strats_frame = reach_any_winners_campaign_parallel(
+                                                ordered_test, k - 1, Q, ballot_counts_short, budget,
+                                                c_l=[], zeros=0, allowed_length=allowed_length
+                                            )
+                                            # Add early winner with 0 gap (they already won)
+                                            strats_frame[cw] = [0, {}]
+                                            early_winner_handled = True
                                 break
 
+                    # --- Step B: If permit failed, try loopy (shorter pools) ---
+                    if not stv_viable:
+                        current_keep = len(candidates_retained) - 1
+                        while current_keep > k and not stv_viable:
+                            cands_try, group_try, stop_try = remove_irrelevent(
+                                ballot_counts, rt, results[:current_keep], budget,
+                                ''.join(results), rigorous_check
+                            )
+                            if not stop_try:
+                                current_keep -= 1
+                                continue
+
+                            # Check collection state at this level
+                            sn_try = len(candidates) - len(cands_try)
+                            if sn_try < len(collection):
+                                bc_try = collection[sn_try][0]
+                                agg_coll_try = utils.get_new_dict(bc_try)
+                                coll_early_try = [c for c in cands_try if agg_coll_try.get(c, 0) >= Q]
+
+                                if not coll_early_try:
+                                    # No early winner in collection — compute directly
+                                    candidates_retained = cands_try
+                                    candidates_removed = [c for c in results if c not in cands_try]
+                                    group_remaining = group_try
+                                    stv_viable = True
+                                    if check_strats:
+                                        # Filter cands_try to only those present in bc_try
+                                        active_try = set(key[0] for key in bc_try.keys() if key)
+                                        valid_cands = [c for c in cands_try if c in active_try]
+                                        ordered_test = sorted(valid_cands, key=lambda x: results.index(x))
+                                        # Only compute if tractable (< 9 candidates)
+                                        if len(ordered_test) < 9:
+                                            strats_frame = reach_any_winners_campaign_parallel(
+                                                ordered_test, k, Q, bc_try, budget,
+                                                c_l=[], zeros=0, allowed_length=allowed_length
+                                            )
+                                            early_winner_handled = True
+                                    break
+
+                                # Collection still has early winner — try permit
+                                for cw in coll_early_try:
+                                    permitted = permit_STV_removal(
+                                        cw, ballot_counts, Q, cands_try, group_try,
+                                        budget_percent, spl_check=spl_check
+                                    )
+                                    if permitted:
+                                        candidates_retained = cands_try
+                                        candidates_removed = [c for c in results if c not in cands_try]
+                                        group_remaining = group_try
+                                        stv_viable = True
+                                        if check_strats:
+                                            # Use collection[sn_try] - state after early winner
+                                            if sn_try < len(collection):
+                                                bc_small = collection[sn_try][0]
+                                                test = [rt[i][0] for i in range(sn_try, len(rt))]
+                                                ordered_test = sorted(test, key=lambda x: results.index(x))
+                                                # Only compute if tractable (< 9 candidates)
+                                                if len(ordered_test) < 9:
+                                                    # Use k-1 for remaining seats
+                                                    strats_frame = reach_any_winners_campaign_parallel(
+                                                        ordered_test, k - 1, Q, bc_small, budget,
+                                                        c_l=[], zeros=0, allowed_length=allowed_length
+                                                    )
+                                                    strats_frame[cw] = [0, {}]
+                                                    early_winner_handled = True
+                                    break
+
+                            if not stv_viable:
+                                current_keep -= 1
+
+                    # --- Step C: If loopy exhausted, reset — this budget doesn't work ---
+                    if not stv_viable:
+                        candidates_removed = []
+                        candidates_retained = candidates
+                        group_remaining = ''
+
             # If no early winner or single-winner, use standard approach
-            if not early_winner_handled:
+            if not early_winner_handled and check_strats:
                 if all(agg_v_dict.get(cand, 0) < Q for cand in candidates_retained):
                     # No immediate winners, compute strategies for all retained candidates
-                    strats_frame = reach_any_winners_campaign_parallel(
-                        candidates_retained, k, Q, filtered_data, budget,
-                        c_l=[], zeros=0, allowed_length=allowed_length
-                    )
-                # If early winner exists but permit_STV_removal failed, leave strats_frame empty
-                # This signals to webapp's divide-and-conquer to try a lower budget
+                    # Only compute if tractable (< 9 candidates)
+                    if len(candidates_retained) < 9:
+                        strats_frame = reach_any_winners_campaign_parallel(
+                            candidates_retained, k, Q, filtered_data, budget,
+                            c_l=[], zeros=0, allowed_length=allowed_length
+                        )
+                # If early winner exists but loopy exhausted, strats_frame stays empty
+                # This signals to webapp's binary search to try a lower budget
 
             # Convert combination-based strategies to per-candidate strategies for multi-winner
             if k > 1 and strats_frame:
@@ -488,9 +841,71 @@ def process_ballot_counts_post_elim_no_print(ballot_counts, k, candidates, elim_
 
             strats_frame_percent = convert_to_percentage(strats_frame, total_votes)
         else:
-            # No candidates removed by remove_irrelevent.
-            # Use elec_cands (which excludes any pre-eliminated candidates from elim_cands).
-            if len(elec_cands) <= 9:
+            # No candidates removed by remove_irrelevent at initial keep_at_least.
+            # Try loopy: decrease keep_at_least until removal succeeds
+            if check_strats and k > 1:
+                current_keep = keep_at_least - 1
+                loopy_success = False
+                while current_keep > k and not loopy_success:
+                    cands_try, group_try, stop_try = remove_irrelevent(
+                        ballot_counts, rt, results[:current_keep], budget,
+                        ''.join(results), rigorous_check
+                    )
+                    if stop_try:
+                        # Removal succeeded at this level
+                        sn_try = len(candidates) - len(cands_try)
+                        if sn_try < len(collection):
+                            bc_try = collection[sn_try][0]
+                            agg_coll_try = utils.get_new_dict(bc_try)
+                            coll_early_try = [c for c in cands_try if agg_coll_try.get(c, 0) >= Q]
+
+                            if not coll_early_try:
+                                # No early winner - compute directly
+                                candidates_retained = cands_try
+                                candidates_removed = [c for c in results if c not in cands_try]
+                                active_try = set(key[0] for key in bc_try.keys() if key)
+                                valid_cands = [c for c in cands_try if c in active_try]
+                                ordered_test = sorted(valid_cands, key=lambda x: results.index(x))
+                                # Only compute if tractable (< 9 candidates)
+                                if len(ordered_test) < 9:
+                                    strats_frame = reach_any_winners_campaign_parallel(
+                                        ordered_test, k, Q, bc_try, budget,
+                                        c_l=[], zeros=0, allowed_length=allowed_length
+                                    )
+                                    loopy_success = True
+                            else:
+                                # Early winner exists - try permit with small election
+                                for cw in coll_early_try:
+                                    permitted = permit_STV_removal(
+                                        cw, ballot_counts, Q, cands_try, group_try,
+                                        budget_percent, spl_check=spl_check
+                                    )
+                                    if permitted:
+                                        candidates_retained = cands_try
+                                        candidates_removed = [c for c in results if c not in cands_try]
+                                        # Use collection[sn_try] - state after early winner
+                                        if sn_try < len(collection):
+                                            bc_small = collection[sn_try][0]
+                                            test = [rt[i][0] for i in range(sn_try, len(rt))]
+                                            ordered_test = sorted(test, key=lambda x: results.index(x))
+                                            # Only compute if tractable (< 9 candidates)
+                                            if len(ordered_test) < 9:
+                                                # Use k-1 for remaining seats
+                                                strats_frame = reach_any_winners_campaign_parallel(
+                                                    ordered_test, k - 1, Q, bc_small, budget,
+                                                    c_l=[], zeros=0, allowed_length=allowed_length
+                                                )
+                                                strats_frame[cw] = [0, {}]
+                                                loopy_success = True
+                                        break
+                    current_keep -= 1
+
+                if loopy_success and k > 1 and strats_frame:
+                    strats_frame = convert_combination_strats_to_candidate_strats(strats_frame, k, results)
+                    strats_frame_percent = convert_to_percentage(strats_frame, total_votes)
+
+            # Fallback for small elections or single-winner
+            elif len(elec_cands) < 9 and check_strats:
                 strats_frame = reach_any_winners_campaign_parallel(
                     elec_cands, k, Q, filtered_data, budget, c_l=[], zeros=0,
                     allowed_length=allowed_length
@@ -663,22 +1078,30 @@ def process_bootstrap_samples(k, candidates_mapping, bootstrap_samples_dir, boot
                         if not removal_permitted:
                             print(f"Error. Candidate {cand_winner} wins during elimination")
                         else:
+                            # Use collection[small_election_number] - state after early winner
                             small_election_number = len(candidates) - len(candidates_reduced)
-                            ballot_counts_short = collection[small_election_number][0]
-                            test = [rt[i][0] for i in range(small_election_number, len(rt))]
-                            ordered_test = sorted(test, key=lambda x: results.index(x))
-                            strats_frame = reach_any_winners_campaign(
-                                ordered_test, k, Q, ballot_counts_short, budget, allowed_length= allowed_length
-                            )
-                            print("special removal permit is working")
-                            
+                            if small_election_number < len(collection):
+                                bc_small = collection[small_election_number][0]
+                                test = [rt[i][0] for i in range(small_election_number, len(rt))]
+                                ordered_test = sorted(test, key=lambda x: results.index(x))
+                                # Only compute if tractable (< 9 candidates)
+                                if len(ordered_test) < 9:
+                                    # Use k-1 for remaining seats
+                                    strats_frame = reach_any_winners_campaign(
+                                        ordered_test, k - 1, Q, bc_small, budget, allowed_length=allowed_length
+                                    )
+                                    strats_frame[cand_winner] = [0, {}]
+                                    print("special removal permit is working")
+
                             break
                 
                 # If no immediate winners, check strategies for all remaining candidates
                 if all(agg_v_dict[cand_winner] < Q for cand_winner in candidates_reduced):
-                    strats_frame = reach_any_winners_campaign(
-                        candidates_reduced, k, Q, filtered_data, budget, allowed_length= allowed_length
-                    )
+                    # Only compute if tractable (< 9 candidates)
+                    if len(candidates_reduced) < 9:
+                        strats_frame = reach_any_winners_campaign(
+                            candidates_reduced, k, Q, filtered_data, budget, allowed_length= allowed_length
+                        )
                 
                 data_samples.append(strats_frame)
 
@@ -702,23 +1125,64 @@ def process_bootstrap_samples(k, candidates_mapping, bootstrap_samples_dir, boot
 # ============================================================================
 # PERMITTING FUNCTIONS
 # ============================================================================
+#
+# These functions implement Theorem 4.2 "Irrelevant Extension" from the paper.
+#
+# When we use remove_irrelevent() to eliminate candidates, a retained candidate
+# may exceed quota Q in the filtered ballot state. This function checks whether
+# this early winner's position is "robust" - meaning none of the removed
+# candidates could have prevented their win, even with budget-sized additions.
+#
+# If permit returns True, we can safely use the "small election method":
+# treat the early winner as already elected and compute strategies for k-1 seats.
+# ============================================================================
 
-def permit_STV_removal(cand_winner, ballot_counts, Q, candidates_reduced, group, 
+def permit_STV_removal(cand_winner, ballot_counts, Q, candidates_reduced, group,
                       budget_percent, spl_check=False):
     """
-    Check if a candidate's removal is permitted under STV rules.
-    
+    Check if early winner removal is permitted under STV rules.
+
+    When a candidate exceeds quota Q after filtering, this function verifies
+    the removal is valid under the "Irrelevant Extension" theorem (Theorem 4.2).
+
+    The key insight: If candidate A exceeds Q after removal of group G, we check
+    that no candidate in G could have prevented A's win by computing:
+    1. Surplus transfers from A to candidates in G
+    2. Vote redistributions that could occur
+    3. Whether any candidate in G could have reached a position to block A
+
+    Paper Reference: Theorem 4.2 "Irrelevant Extension" in "Optimal Strategies in RCV"
+
     Parameters:
-    cand_winner (str): Winning candidate identifier
-    ballot_counts (dict): Dictionary of ballot counts
-    Q (float): Quota value
-    candidates_reduced (list): Reduced list of candidates
-    group (str): Group of candidates
-    budget_percent (float): Budget percentage
-    spl_check (bool): Whether to do special check
-    
+    -----------
+    cand_winner : str
+        The candidate who exceeds Q after filtering (the "early winner")
+    ballot_counts : dict
+        Original ballot data (before any filtering)
+    Q : float
+        Droop quota
+    candidates_reduced : list
+        Candidates retained after removal
+    group : str
+        String of candidates that were removed
+    budget_percent : float
+        Budget threshold (% of total votes) for strategy computation
+    spl_check : bool
+        If True, also considers the weakest retained candidate in calculations.
+        This makes the check more conservative (harder to pass).
+
     Returns:
-    bool: Whether removal is permitted
+    --------
+    bool
+        True if removal is valid and small election method can be used.
+        False if the early winner might have been affected by removed candidates.
+
+    Usage:
+    ------
+    If permit_STV_removal() returns True:
+        - Use collection[small_num] for ballot state
+        - Compute strategies with k-1 seats (early winner already elected)
+        - Add early winner to strats_frame with gap = 0
     """
     surplusA = {}
     A_original = utils.get_new_dict(ballot_counts)[cand_winner]
