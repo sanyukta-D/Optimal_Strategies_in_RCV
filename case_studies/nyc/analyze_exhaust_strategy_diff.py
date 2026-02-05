@@ -1,3 +1,13 @@
+# Paper figures produced by this script:
+#   - Fig 5 left:  nyc_exhaust_strategy_diff_boxplot.pdf   (Fig \ref{fig:exhaustion_nyc})
+#   - Fig 6 left:  alaska_exhaust_strategy_diff_boxplot.pdf (Fig \ref{fig:exhaustion_alaska})
+#
+# Input data (paper's source of truth for single-winner exhaustion):
+#   - results/tables/summary_table_nyc_final.xlsx   (exhaust_percents column)
+#   - results/tables/summary_table_alska_lite.xlsx  (exhaust_percents column)
+#
+# Raw ballot data: case_studies/nyc/data/ and case_studies/alaska/data/
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt

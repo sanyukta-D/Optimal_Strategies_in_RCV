@@ -36,12 +36,21 @@ from rcv_strategies.utils.case_study_helpers import (
 # Import probability models for ballot exhaustion analysis (6 models from paper)
 try:
     from ballot_exhaustion.probability_models import (
+        # Single-winner models (IRV)
         beta_probability,           # Gap-Based Beta
         direct_posterior_beta,      # Similarity Beta
         prior_posterior_beta,       # Prior-Posterior Beta
         category_based_bootstrap,   # Similarity Bootstrap
         limited_ranking_bootstrap,  # Rank-Restricted Bootstrap
-        unconditional_bootstrap     # Unconditional Bootstrap
+        unconditional_bootstrap,    # Unconditional Bootstrap
+        # Multi-winner models (STV) - compare candidate vs ALL active candidates
+        analyze_preference_patterns_multi_winner,
+        beta_probability_multi_winner,
+        similarity_beta_multi_winner,
+        prior_posterior_beta_multi_winner,
+        category_bootstrap_multi_winner,
+        limited_ranking_bootstrap_multi_winner,
+        unconditional_bootstrap_multi_winner
     )
     PROB_MODELS_AVAILABLE = True
 except ImportError as e:
@@ -243,6 +252,13 @@ with st.sidebar:
         )
         rigorous_check = st.checkbox("Rigorous candidate removal", value=True)
         check_strategies = st.checkbox("Compute optimal strategies", value=True)
+        max_rankings = st.number_input(
+            "Max Rankings (for Rank-Restricted Bootstrap)",
+            min_value=3, max_value=20, value=5,
+            help="Maximum rankings allowed per ballot. NYC=5, Portland=6. "
+                 "If no rank limit is set by the election, set this to the number of candidates "
+                 "(treats all exhausted ballots as completable). Used by the Rank-Restricted Bootstrap model."
+        )
 
     st.markdown("---")
     st.markdown("### References")
@@ -662,22 +678,12 @@ if uploaded_file is not None:
                     # IRV_ballot_exhaust returns CUMULATIVE exhaustion (total - remaining)
                     exhausted_list, exhausted_dict = IRV_ballot_exhaust(candidates_list, ballot_counts)
                     exhausted_pct = {key: round(val/total_votes*100, 2) for key, val in exhausted_dict.items()}
-                    total_exhausted_final = exhausted_dict.get(results[-1], 0) if results else 0
+                    total_exhausted_final = max(exhausted_dict.values()) if exhausted_dict else 0
                 else:
-                    # STV_ballot_exhaust returns INCREMENTAL exhaustion per round
-                    # For probability analysis, we need CUMULATIVE exhaustion at each candidate's elimination
                     exhausted_list, exhausted_dict, stv_winners = STV_ballot_exhaust(candidates_list, ballot_counts, k, Q)
-
-                    # Compute cumulative exhaustion using rt2 (event log from STV)
-                    cumulative_exhausted_pct = {}
-                    cumulative = 0
-                    for i, (candidate, is_winner) in enumerate(rt2):
-                        if i < len(exhausted_list):
-                            cumulative += exhausted_list[i]
-                        cumulative_exhausted_pct[candidate] = round(cumulative / total_votes * 100, 2)
-
-                    exhausted_pct = cumulative_exhausted_pct
-                    total_exhausted_final = cumulative if exhausted_list else 0
+                    # exhausted_dict stores exhaustion BEFORE each candidate's event (paper convention)
+                    exhausted_pct = {key: round(val/total_votes*100, 2) for key, val in exhausted_dict.items()}
+                    total_exhausted_final = sum(exhausted_list)  # final cumulative from incremental list
 
                 exhaustion_rate = round(total_exhausted_final / total_votes * 100, 2)
 
@@ -1001,56 +1007,121 @@ if uploaded_file is not None:
 
                                     gap = cand['gap']
                                     exhaust = cand['exhaust']
-                                    winner_code = results[0]  # Winner is 'A'
                                     cand_code = cand['code']
                                     candidates_list_for_model = list(set(results))
 
-                                    # Compute exhausted_ballots: ballots that don't rank both winner and candidate
-                                    exhausted_ballots_for_model = {
-                                        ballot: count for ballot, count in ballot_counts.items()
-                                        if winner_code not in ballot and cand_code not in ballot
-                                    }
-
                                     with st.spinner(f"Computing probability models ({n_bootstrap} bootstrap iterations)..."):
-                                        # 1. Gap-Based Beta (fast)
-                                        gap_based_beta = beta_probability(required_pref_pct, gap) * 100
+                                        if k == 1:
+                                            # ====== SINGLE-WINNER (IRV) MODELS ======
+                                            # For single-winner: compare candidate (B) vs winner (A)
+                                            # Exhausted ballots = ballots not ranking A or B
+                                            exhausted_ballots_for_model = {
+                                                ballot: count for ballot, count in ballot_counts.items()
+                                                if 'A' not in ballot and 'B' not in ballot
+                                            }
 
-                                        # 2. Similarity Beta (fast)
-                                        similarity_beta = direct_posterior_beta(
-                                            required_pref_pct, ballot_counts, candidates_list_for_model,
-                                            exhausted_ballots_for_model, gap
-                                        ) * 100
+                                            # 1. Gap-Based Beta (fast)
+                                            gap_based_beta = beta_probability(required_pref_pct, gap) * 100
 
-                                        # 3. Prior-Posterior Beta (fast)
-                                        prior_post_beta = prior_posterior_beta(
-                                            required_pref_pct, ballot_counts, candidates_list_for_model,
-                                            exhausted_ballots_for_model, gap
-                                        ) * 100
+                                            # 2. Similarity Beta (fast)
+                                            similarity_beta = direct_posterior_beta(
+                                                required_pref_pct, ballot_counts, candidates_list_for_model,
+                                                exhausted_ballots_for_model, gap
+                                            ) * 100
 
-                                        # 4. Similarity Bootstrap (uses iterations)
-                                        sim_bootstrap, sim_ci, _ = category_based_bootstrap(
-                                            ballot_counts, candidates_list_for_model, exhausted_ballots_for_model,
-                                            gap_to_win_pct=gap, exhaust_pct=exhaust,
-                                            required_preference_pct=required_pref_pct, n_bootstrap=n_bootstrap
-                                        )
-                                        sim_bootstrap *= 100
+                                            # 3. Prior-Posterior Beta (fast)
+                                            prior_post_beta = prior_posterior_beta(
+                                                required_pref_pct, ballot_counts, candidates_list_for_model,
+                                                exhausted_ballots_for_model, gap
+                                            ) * 100
 
-                                        # 5. Rank-Restricted Bootstrap (uses iterations)
-                                        rank_bootstrap, rank_ci, _ = limited_ranking_bootstrap(
-                                            ballot_counts, candidates_list_for_model, exhausted_ballots_for_model,
-                                            gap_to_win_pct=gap, exhaust_pct=exhaust,
-                                            required_preference_pct=required_pref_pct, n_bootstrap=n_bootstrap,
-                                            max_rankings=6
-                                        )
-                                        rank_bootstrap *= 100
+                                            # 4. Similarity Bootstrap (uses iterations)
+                                            sim_bootstrap, sim_ci, _ = category_based_bootstrap(
+                                                ballot_counts, candidates_list_for_model, exhausted_ballots_for_model,
+                                                gap_to_win_pct=gap, exhaust_pct=exhaust,
+                                                required_preference_pct=required_pref_pct, n_bootstrap=n_bootstrap
+                                            )
+                                            sim_bootstrap *= 100
 
-                                        # 6. Unconditional Bootstrap (uses iterations)
-                                        uncond_bootstrap, uncond_ci, _ = unconditional_bootstrap(
-                                            ballot_counts, candidates_list_for_model, exhausted_ballots_for_model,
-                                            gap_to_win_pct=gap, exhaust_pct=exhaust,
-                                            required_preference_pct=required_pref_pct, n_bootstrap=n_bootstrap
-                                        )
-                                        uncond_bootstrap *= 100
+                                            # 5. Rank-Restricted Bootstrap (uses iterations)
+                                            rank_bootstrap, rank_ci, _ = limited_ranking_bootstrap(
+                                                ballot_counts, candidates_list_for_model, exhausted_ballots_for_model,
+                                                gap_to_win_pct=gap, exhaust_pct=exhaust,
+                                                required_preference_pct=required_pref_pct, n_bootstrap=n_bootstrap,
+                                                max_rankings=max_rankings
+                                            )
+                                            rank_bootstrap *= 100
+
+                                            # 6. Unconditional Bootstrap (uses iterations)
+                                            uncond_bootstrap, uncond_ci, _ = unconditional_bootstrap(
+                                                ballot_counts, candidates_list_for_model, exhausted_ballots_for_model,
+                                                gap_to_win_pct=gap, exhaust_pct=exhaust,
+                                                required_preference_pct=required_pref_pct, n_bootstrap=n_bootstrap
+                                            )
+                                            uncond_bootstrap *= 100
+
+                                        else:
+                                            # ====== MULTI-WINNER (STV) MODELS ======
+                                            # For multi-winner: compare candidate vs ALL active candidates
+                                            # Get event_log to determine active candidates at each elimination
+                                            event_log, _, _ = STV_optimal_result_simple(candidates_list, ballot_counts, k, Q)
+
+                                            # Build mapping of candidate -> active candidates when eliminated/won
+                                            active_at_event = {}
+                                            candidates_remaining = set(candidates_list)
+                                            for candidate, is_winner in event_log:
+                                                active_at_event[candidate] = candidates_remaining.copy()
+                                                candidates_remaining.remove(candidate)
+
+                                            # Get active candidates for this specific candidate
+                                            active_candidates = active_at_event.get(cand_code, set(candidates_list))
+
+                                            # Multi-winner exhausted = ballots not ranking ANY active candidate
+                                            exhausted_ballots_multi = {
+                                                ballot: count for ballot, count in ballot_counts.items()
+                                                if ballot and not any(c in active_candidates for c in ballot)
+                                            }
+
+                                            # Analyze preference patterns (candidate vs all other active)
+                                            preference_analysis = analyze_preference_patterns_multi_winner(
+                                                ballot_counts, exhausted_ballots_multi, cand_code, active_candidates
+                                            )
+
+                                            # 1. Gap-Based Beta (fast)
+                                            gap_based_beta = beta_probability_multi_winner(required_pref_pct, gap) * 100
+
+                                            # 2. Similarity Beta (fast)
+                                            similarity_beta = similarity_beta_multi_winner(
+                                                preference_analysis, cand_code, active_candidates,
+                                                required_pref_pct, gap
+                                            ) * 100
+
+                                            # 3. Prior-Posterior Beta (fast)
+                                            prior_post_beta = prior_posterior_beta_multi_winner(
+                                                preference_analysis, cand_code, active_candidates,
+                                                required_pref_pct, gap
+                                            ) * 100
+
+                                            # 4. Similarity Bootstrap (uses iterations)
+                                            sim_bootstrap, sim_ci = category_bootstrap_multi_winner(
+                                                preference_analysis, cand_code, active_candidates,
+                                                required_pref_pct, gap, n_bootstrap
+                                            )
+                                            sim_bootstrap *= 100
+
+                                            # 5. Rank-Restricted Bootstrap (uses iterations)
+                                            rank_bootstrap, rank_ci = limited_ranking_bootstrap_multi_winner(
+                                                ballot_counts, exhausted_ballots_multi, cand_code, active_candidates,
+                                                required_pref_pct, gap, n_bootstrap, max_rankings
+                                            )
+                                            rank_bootstrap *= 100
+
+                                            # 6. Unconditional Bootstrap (uses iterations)
+                                            uncond_bootstrap, uncond_ci = unconditional_bootstrap_multi_winner(
+                                                ballot_counts, exhausted_ballots_multi, cand_code, active_candidates,
+                                                required_pref_pct, gap, n_bootstrap, max_rankings
+                                            )
+                                            uncond_bootstrap *= 100
 
                                     # Combined weighted probability (emphasizing empirical methods)
                                     combined_prob = (
@@ -1063,20 +1134,39 @@ if uploaded_file is not None:
                                     )
 
                                     # Display probability results with paper model names
-                                    prob_models = [
-                                        ("Gap-Based Beta", gap_based_beta,
-                                         f"Beta distribution calibrated to victory gap ({gap:.1f}%). Larger gaps shift distribution toward the leader."),
-                                        ("Similarity Beta", similarity_beta,
-                                         "Uses observed B>A vs A>B preference ratios by first-preference category to fit Beta parameters."),
-                                        ("Prior-Posterior Beta", prior_post_beta,
-                                         "Bayesian update: combines gap-based prior with observed preference evidence."),
-                                        ("Similarity Bootstrap", sim_bootstrap,
-                                         f"Bootstrap ({n_bootstrap} iterations) grouping exhausted ballots by first preference, sampling completions from category-specific ratios."),
-                                        ("Rank-Restricted Bootstrap", rank_bootstrap,
-                                         f"Like Similarity Bootstrap but respects ranking limits (max 6). More conservative estimate."),
-                                        ("Unconditional Bootstrap", uncond_bootstrap,
-                                         f"Bootstrap ({n_bootstrap} iterations) assuming random completion without first-preference conditioning."),
-                                    ]
+                                    if k == 1:
+                                        # Single-winner descriptions (A vs B)
+                                        prob_models = [
+                                            ("Gap-Based Beta", gap_based_beta,
+                                             f"Beta distribution calibrated to victory gap ({gap:.1f}%). Larger gaps shift distribution toward the leader."),
+                                            ("Similarity Beta", similarity_beta,
+                                             "Uses observed B>A vs A>B preference ratios by first-preference category to fit Beta parameters."),
+                                            ("Prior-Posterior Beta", prior_post_beta,
+                                             "Bayesian update: combines gap-based prior with observed preference evidence."),
+                                            ("Similarity Bootstrap", sim_bootstrap,
+                                             f"Bootstrap ({n_bootstrap} iterations) grouping exhausted ballots by first preference, sampling completions from category-specific ratios."),
+                                            ("Rank-Restricted Bootstrap", rank_bootstrap,
+                                             f"Like Similarity Bootstrap but respects ranking limits (max {max_rankings}). More conservative estimate."),
+                                            ("Unconditional Bootstrap", uncond_bootstrap,
+                                             f"Bootstrap ({n_bootstrap} iterations) assuming random completion without first-preference conditioning."),
+                                        ]
+                                    else:
+                                        # Multi-winner descriptions (candidate vs all active)
+                                        n_active = len(active_candidates)
+                                        prob_models = [
+                                            ("Gap-Based Beta", gap_based_beta,
+                                             f"Beta distribution calibrated to victory gap ({gap:.1f}%). Compares candidate vs all {n_active} active candidates."),
+                                            ("Similarity Beta", similarity_beta,
+                                             "Uses observed preference patterns: candidate ranked highest vs others ranked higher among active candidates."),
+                                            ("Prior-Posterior Beta", prior_post_beta,
+                                             "Bayesian update: combines gap-based prior with observed multi-candidate preference evidence."),
+                                            ("Similarity Bootstrap", sim_bootstrap,
+                                             f"Bootstrap ({n_bootstrap} iterations) sampling completions based on first-preference category patterns."),
+                                            ("Rank-Restricted Bootstrap", rank_bootstrap,
+                                             f"Like Similarity Bootstrap but only completes partial ballots (< {max_rankings} rankings)."),
+                                            ("Unconditional Bootstrap", uncond_bootstrap,
+                                             f"Bootstrap ({n_bootstrap} iterations) sampling from all ballots ranking any active candidate."),
+                                        ]
 
                                     # Summary table
                                     st.markdown("| Model | Probability |")

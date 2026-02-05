@@ -180,147 +180,66 @@ def IRV_ballot_exhaust(cands, ballot_counts):
 
 def STV_ballot_exhaust(cands, ballot_counts, k, Q):
     """
-    Produce ballot exhaustion for Single Transferable Vote (STV).
-    
+    Calculate ballot exhaustion for STV elections.
+    Replicates the proven approach from print_exhaustion_analysis
+    that produced the paper's verified results.
+
     Args:
         cands (list): List of candidates.
         ballot_counts (dict): Dictionary where keys are ranked ballots (as strings) and values are counts.
         k (int): Number of winners.
         Q (float): Quota threshold for winning.
-        
+
     Returns:
         tuple: Contains three elements:
-            - List of exhausted ballots at each round
-            - Dictionary mapping eliminated candidates to number of exhausted ballots
+            - List of incremental exhausted ballots at each round
+            - Dictionary mapping each candidate to cumulative exhausted ballot count BEFORE their event
+              (i.e., exhaustion that existed while the candidate was still active — matches IRV convention)
             - List of winners (for verification)
     """
-    candidates_remaining = deepcopy(cands)
-    aggregated_votes = get_new_dict(ballot_counts)
-    results = []
+    event_log, result_dict, round_history = STV_optimal_result_simple(cands, ballot_counts, k, Q)
+
+    candidates_remaining = set(cands)
+    used_ballots = {}       # ballots consumed by winners (winner-first)
+    exhausted_ballots = {}  # cumulative exhausted ballots
+    current_ballots = ballot_counts.copy()
+
+    exhausted_ballots_list = []  # incremental exhaustion per round
+    exhausted_ballots_dict = {}  # candidate -> cumulative exhaustion BEFORE their event
     winners = []
-    
-    # Track total ballots at start
-    total_ballots = sum(ballot_counts.values())
-    ballot_count_list = [total_ballots]    
-    exhausted_ballots_list = []
-    exhausted_ballots_dict = {}
-    filtered_ballots = ballot_counts.copy()
-    
-    # Process until we have k winners
-    while len(winners) < k and candidates_remaining:
-        # Count first-choice votes for remaining candidates
-        vote_counts = {
-            candidate: aggregated_votes.get(candidate, 0) 
-            for candidate in candidates_remaining
-        }
-        
-        if not vote_counts:
-            break
-            
-        # Track current ballot count before any changes
-        current_ballot_count = sum(filtered_ballots.values())
-        ballot_count_list.append(current_ballot_count)
-            
-        # Check if any candidate meets the quota
-        winner = None
-        for candidate, votes in vote_counts.items():
-            if votes >= Q:
-                # Select the candidate with the most votes who meets quota
-                winner = max(vote_counts, key=vote_counts.get)
-                
-                # Record winner
-                candidates_remaining.remove(winner)
-                winners.append(winner)
-                results.append(winner)
+    prev_cumulative = 0
 
-                # Count exhausted ballots after processing winner
-                exhausted_count = 0
-                new_ballots = {}
-                
-                # First pass: remove winner and count exhausted
-                for ballot, count in filtered_ballots.items():
-                    if ballot.startswith(winner):
-                        # For ballots starting with winner, check if they have valid choices after removal
-                        new_ballot = ballot[1:]
-                        if not any(c in candidates_remaining for c in new_ballot):
-                            exhausted_count += count
-                        elif new_ballot:  # Only keep non-empty ballots
-                            new_ballots[new_ballot] = new_ballots.get(new_ballot, 0) + count
-                    else:
-                        if winner in ballot:
-                            # Remove winner from anywhere in ballot
-                            new_ballot = ''.join(char for char in ballot if char != winner)
-                            if not any(c in candidates_remaining for c in new_ballot):
-                                exhausted_count += count
-                            elif new_ballot:  # Only keep non-empty ballots
-                                new_ballots[new_ballot] = new_ballots.get(new_ballot, 0) + count
-                        else:
-                            # Keep ballot as is
-                            new_ballots[ballot] = new_ballots.get(ballot, 0) + count
+    for round_num, (candidate, is_winner) in enumerate(event_log, 1):
+        if is_winner:
+            winners.append(candidate)
+            candidates_remaining.remove(candidate)
+            # Mark ballots ranking this winner first as used
+            for ballot, count in current_ballots.items():
+                if ballot.startswith(candidate):
+                    used_ballots[ballot] = used_ballots.get(ballot, 0) + count
+        else:
+            candidates_remaining.remove(candidate)
 
-                # Distribute surplus votes proportionally
-                surplus = votes - Q
-                if surplus > 0:
-                    transfer_weight = surplus / votes
-                    final_ballots = {}
-                    
-                    # Second pass: distribute surplus
-                    for ballot, count in new_ballots.items():
-                        if ballot.startswith(winner):
-                            # Remove the winner from the ballot
-                            new_ballot = ballot[1:]
-                            if new_ballot:  # Only keep non-empty ballots
-                                final_ballots[new_ballot] = final_ballots.get(new_ballot, 0) + count * transfer_weight
-                        else:
-                            final_ballots[ballot] = final_ballots.get(ballot, 0) + count
-                    
-                    # Clean up and update
-                    filtered_ballots = final_ballots
-                else:
-                    filtered_ballots = new_ballots
+        # Count newly exhausted ballots (not used by winners, no remaining active candidates)
+        new_exhausted = {}
+        for ballot, count in current_ballots.items():
+            if ballot not in used_ballots:
+                if not any(c in candidates_remaining for c in ballot):
+                    new_exhausted[ballot] = count
 
-                # Add exhausted ballots for this round
-                exhausted_ballots_list.append(exhausted_count)
-                
-                # Track which candidates caused ballot exhaustion
-                if exhausted_count > 0:
-                    exhausted_ballots_dict[winner] = exhausted_count
-                
-                break
-                
-        # If no candidate meets the quota, eliminate the lowest
-        if winner is None:
-            # Find candidate with fewest votes
-            worst_candidate = min(vote_counts, key=vote_counts.get)
-            
-            # Count exhausted ballots after elimination
-            exhausted_count = 0
-            new_ballots = {}
-            
-            for ballot, count in filtered_ballots.items():
-                # Remove the eliminated candidate from anywhere in ballot
-                new_ballot = ''.join(char for char in ballot if char != worst_candidate)
-                if not any(c in candidates_remaining for c in new_ballot):
-                    exhausted_count += count
-                elif new_ballot:  # Only keep non-empty ballots
-                    new_ballots[new_ballot] = new_ballots.get(new_ballot, 0) + count
-            
-            # Remove candidate from remaining list and add to results
-            candidates_remaining.remove(worst_candidate)
-            results.append(worst_candidate)
-            
-            filtered_ballots = new_ballots
-            
-            # Add exhausted ballots for this round
-            exhausted_ballots_list.append(exhausted_count)
-            
-            # Track which candidates caused ballot exhaustion
-            if exhausted_count > 0:
-                exhausted_ballots_dict[worst_candidate] = exhausted_count
-        
-        # Recalculate aggregated votes
-        aggregated_votes = get_new_dict(filtered_ballots)
-    
+        for ballot, count in new_exhausted.items():
+            exhausted_ballots[ballot] = exhausted_ballots.get(ballot, 0) + count
+
+        cumulative = sum(exhausted_ballots.values())
+        incremental = cumulative - prev_cumulative
+        exhausted_ballots_list.append(incremental)
+        exhausted_ballots_dict[candidate] = prev_cumulative  # BEFORE this event (matches IRV convention & paper)
+        prev_cumulative = cumulative
+
+        # Update current_ballots for next round from round_history
+        if round_num < len(round_history):
+            current_ballots = round_history[round_num][0]
+
     return exhausted_ballots_list, exhausted_ballots_dict, winners
 
 
@@ -535,115 +454,6 @@ def create_STV_round_result_given_structure(structure, checked_candidates, remai
             new_ballot_counts[new_key] = new_ballot_counts.get(new_key, 0) + value
         new_ballot_counts.pop('', None)
         return new_ballot_counts
-
-def verify_exhaustion_matches_no_winners(ballot_counts, winners, total_exhausted):
-    """
-    Verify that the final exhaustion rate matches ballots that didn't rank any winners.
-    
-    Args:
-        ballot_counts (dict): Original ballot counts
-        winners (list): List of winning candidates
-        total_exhausted (int): Total number of exhausted ballots
-        
-    Returns:
-        tuple: (bool, int) - Whether verification passed and count of ballots with no winners
-    """
-    ballots_with_no_winners = 0
-    for ballot, count in ballot_counts.items():
-        if not any(winner in ballot for winner in winners):
-            ballots_with_no_winners += count
-    
-    return ballots_with_no_winners == total_exhausted, ballots_with_no_winners
-
-def STV_ballot_exhaust_verification(cands, ballot_counts, k, Q):
-    """
-    Verify ballot exhaustion using the following logic:
-    1. Initialize "used ballots" and "exhausted ballots" empty
-    2. For each round:
-       - If there's a win, move ballots ranking winner first to "used ballots"
-       - Update set of active candidates
-       - Exhausted ballots = ballots (excluding used) that don't rank any active candidates
-    3. For ballots ranking winners at later positions, treat as if they didn't rank the winner
-       if the winner is already elected when that position is reached
-    
-    Args:
-        cands (list): List of candidates
-        ballot_counts (dict): Dictionary of ballot counts
-        k (int): Number of winners
-        Q (float): Quota threshold
-        
-    Returns:
-        tuple: (exhausted_ballots_list, used_ballots, winners)
-    """
-    candidates_remaining = deepcopy(cands)
-    used_ballots = set()  # Set of ballots that contributed to a win
-    exhausted_ballots_list = []
-    winners = []
-    total_ballots = sum(ballot_counts.values())
-    
-    # Get the social choice order first
-    event_log, result_dict, _ = STV_optimal_result_simple(cands, ballot_counts, k, Q)
-    
-    # Process each round based on the event log
-    for candidate, is_winner in event_log:
-        if is_winner:
-            # This is a winning round
-            winners.append(candidate)
-            candidates_remaining.remove(candidate)
-            
-            # Move ballots ranking this winner first to used_ballots
-            for ballot in ballot_counts:
-                if ballot.startswith(candidate):
-                    used_ballots.add(ballot)
-        else:
-            # This is an elimination round
-            candidates_remaining.remove(candidate)
-        
-        # Count exhausted ballots (excluding used ballots)
-        exhausted_count = 0
-        for ballot, count in ballot_counts.items():
-            if ballot not in used_ballots:
-                # Check if ballot has any remaining active candidates
-                if not any(c in candidates_remaining for c in ballot):
-                    exhausted_count += count
-        
-        exhausted_ballots_list.append(exhausted_count)
-    
-    return exhausted_ballots_list, used_ballots, winners
-
-def verify_exhaustion_implementation(ballot_counts, winners, used_ballots, total_exhausted):
-    """
-    Verify the exhaustion implementation matches the described logic.
-    
-    Args:
-        ballot_counts (dict): Original ballot counts
-        winners (list): List of winning candidates
-        used_ballots (set): Set of ballots that contributed to wins
-        total_exhausted (int): Total number of exhausted ballots
-        
-    Returns:
-        tuple: (bool, dict) - Whether verification passed and detailed counts
-    """
-    # Count ballots that don't rank any winners and aren't used
-    ballots_with_no_winners = 0
-    for ballot, count in ballot_counts.items():
-        if ballot not in used_ballots and not any(winner in ballot for winner in winners):
-            ballots_with_no_winners += count
-    
-    # Count used ballots
-    used_ballots_count = sum(ballot_counts[ballot] for ballot in used_ballots)
-    
-    # Count total ballots
-    total_ballots = sum(ballot_counts.values())
-    
-    return {
-        'verification_passed': ballots_with_no_winners == total_exhausted,
-        'ballots_with_no_winners': ballots_with_no_winners,
-        'used_ballots_count': used_ballots_count,
-        'total_ballots': total_ballots,
-        'total_exhausted': total_exhausted
-    }
-
 
 
     

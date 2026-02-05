@@ -1,3 +1,18 @@
+# Paper figures produced by this script:
+#   - Fig 5 right: nyc_models_by_ratio.pdf    (Fig \ref{fig:exhaustion_nyc})
+#   - Fig 6 right: alaska_models_by_ratio.pdf  (Fig \ref{fig:exhaustion_alaska})
+#
+# Output data (used by heatmap.py and webapp):
+#   - model_comparison_results/all_elections_analysis.csv
+#
+# Input data (paper's source of truth for single-winner exhaustion):
+#   - summary_table_nyc_final.xlsx   (also at results/tables/)
+#   - summary_table_alska_lite.xlsx  (also at results/tables/)
+#
+# Raw ballot data for bootstrap models:
+#   - case_studies/nyc/data/     (NYC 2021 DEM primaries)
+#   - case_studies/alaska/data/  (Alaska 2024 elections)
+
 import pandas as pd
 import numpy as np
 import matplotlib as mpl
@@ -2846,6 +2861,413 @@ def prior_posterior_beta(required_preference_pct, ballot_counts, candidates, exh
           f"Required: {required_preference_pct:.2f}%; Probability: {probability:.4f}")
     
     return probability
+
+
+# =============================================================================
+# MULTI-WINNER STV PROBABILITY MODELS
+# =============================================================================
+# These functions are adapted for multi-winner STV elections where we compare
+# a candidate against ALL other active candidates (not just A vs B).
+# Ported from case_studies/portland/strategy_analysis.py which produced the
+# paper's Table 6 (Portland exhaustion analysis).
+
+def analyze_preference_patterns_multi_winner(ballot_counts, exhausted_ballots, candidate_letter, active_candidates):
+    """
+    Analyze preference patterns for candidate vs all other active candidates,
+    categorized by first preference (similar to single-winner RCV analysis).
+
+    For multi-winner STV, we compare candidate against ALL other active candidates,
+    not just one winner. A ballot "prefers" the candidate if it ranks them highest
+    among all active candidates.
+
+    Args:
+        ballot_counts (dict): All ballot counts
+        exhausted_ballots (dict): Exhausted ballot counts
+        candidate_letter (str): The candidate we're analyzing
+        active_candidates (set): Set of all active candidates at elimination
+
+    Returns:
+        dict: Preference analysis results with:
+            - exhausted_by_first_pref: dict mapping first pref to exhausted count
+            - complete_by_first_pref: dict mapping first pref to {candidate_first, others_first, total}
+            - total_exhausted: total exhausted ballot count
+    """
+    # Categorize exhausted ballots by first preference
+    exh_by_first_pref = {}
+    for ballot, count in exhausted_ballots.items():
+        if not ballot:  # Skip empty ballots
+            continue
+        first_pref = ballot[0]
+        if first_pref not in exh_by_first_pref:
+            exh_by_first_pref[first_pref] = 0
+        exh_by_first_pref[first_pref] += count
+
+    # Find non-exhausted ballots that rank at least one active candidate
+    # and categorize by first preference
+    complete_by_first_pref = {}
+
+    for ballot, count in ballot_counts.items():
+        if not ballot:
+            continue
+
+        # Check if ballot ranks at least one active candidate
+        ballot_active_candidates = [c for c in ballot if c in active_candidates]
+
+        if ballot_active_candidates:  # Ballot ranks at least one active candidate
+            first_pref = ballot[0]
+            if first_pref not in complete_by_first_pref:
+                complete_by_first_pref[first_pref] = {
+                    'candidate_first': 0,  # candidate_letter ranked highest among active
+                    'others_first': 0,     # other active candidates ranked highest
+                    'total': 0
+                }
+
+            complete_by_first_pref[first_pref]['total'] += count
+
+            # Determine if candidate_letter or others are ranked highest among active candidates
+            if candidate_letter in ballot_active_candidates:
+                # Find position of candidate_letter among active candidates in this ballot
+                candidate_pos = ballot.index(candidate_letter)
+                other_active_positions = [ballot.index(c) for c in ballot_active_candidates if c != candidate_letter]
+
+                if not other_active_positions or candidate_pos < min(other_active_positions):
+                    # candidate_letter is ranked highest among active candidates
+                    complete_by_first_pref[first_pref]['candidate_first'] += count
+                else:
+                    # Some other active candidate is ranked higher
+                    complete_by_first_pref[first_pref]['others_first'] += count
+            else:
+                # candidate_letter not ranked, so others win by default
+                complete_by_first_pref[first_pref]['others_first'] += count
+
+    return {
+        'exhausted_by_first_pref': exh_by_first_pref,
+        'complete_by_first_pref': complete_by_first_pref,
+        'total_exhausted': sum(exhausted_ballots.values())
+    }
+
+
+def beta_probability_multi_winner(required_preference_pct, gap_to_win_pct):
+    """
+    Calculate probability using Beta distribution for multi-winner STV.
+    Uses same parameters as single-winner analysis: α + β = 100 (percentage scale).
+    """
+    # Ensure required_preference_pct is within bounds
+    required_preference_pct = max(0, min(required_preference_pct, 100))
+
+    # Convert from percentage to proportion for Beta CDF
+    required_proportion = required_preference_pct / 100
+
+    # Use same beta parameters as single-winner analysis (percentage scale)
+    base_param = 50.0
+    max_shift = min(gap_to_win_pct * 0.5, 40)
+    a = max(base_param - max_shift, 10.0)  # Parameter for others (like B/challenger in single-winner)
+    b = max(base_param + max_shift, 10.0)  # Parameter for candidate (like A/leader in single-winner)
+
+    # Calculate probability
+    probability = 1 - stats.beta.cdf(required_proportion, a, b)
+
+    return probability
+
+
+def similarity_beta_multi_winner(preference_analysis, candidate_letter, active_candidates,
+                                required_preference_pct, gap_to_win_pct):
+    """
+    Similarity Beta model for multi-winner STV.
+    Uses observed preference patterns to set Beta parameters directly (α + β = 100).
+    """
+    exh_by_first_pref = preference_analysis['exhausted_by_first_pref']
+    complete_by_first_pref = preference_analysis['complete_by_first_pref']
+    total_exhausted = preference_analysis['total_exhausted']
+
+    if total_exhausted == 0:
+        return 0.5
+
+    # Calculate expected completions based on observed patterns
+    total_expected_candidate = 0
+    total_expected_others = 0
+
+    for first_pref, count in exh_by_first_pref.items():
+        if first_pref in complete_by_first_pref and complete_by_first_pref[first_pref]['total'] > 0:
+            category_data = complete_by_first_pref[first_pref]
+            prob_candidate_first = category_data['candidate_first'] / category_data['total']
+
+            expected_candidate = count * prob_candidate_first
+            expected_others = count * (1 - prob_candidate_first)
+
+            total_expected_candidate += expected_candidate
+            total_expected_others += expected_others
+        else:
+            # Use overall distribution if no category data
+            total_complete = sum(data['total'] for data in complete_by_first_pref.values())
+            total_candidate_first = sum(data['candidate_first'] for data in complete_by_first_pref.values())
+
+            if total_complete > 0:
+                overall_prob = total_candidate_first / total_complete
+                expected_candidate = count * overall_prob
+                expected_others = count * (1 - overall_prob)
+
+                total_expected_candidate += expected_candidate
+                total_expected_others += expected_others
+
+    # Calculate preference percentages from expected completions (0-100 scale)
+    total_completions = total_expected_candidate + total_expected_others
+    if total_completions > 0:
+        candidate_pct = 100 * total_expected_candidate / total_completions
+        others_pct = 100 * total_expected_others / total_completions
+
+        # Use these percentages directly as Beta parameters
+        alpha = candidate_pct
+        beta_param = others_pct
+
+        # Calculate probability
+        required_proportion = required_preference_pct / 100
+        probability = 1 - stats.beta.cdf(required_proportion, alpha, beta_param)
+    else:
+        probability = 0.5
+
+    return probability
+
+
+def prior_posterior_beta_multi_winner(preference_analysis, candidate_letter, active_candidates,
+                                    required_preference_pct, gap_to_win_pct):
+    """
+    Prior-Posterior Beta model for multi-winner STV.
+    Combines prior beliefs (gap-based) with observed evidence.
+    """
+    exh_by_first_pref = preference_analysis['exhausted_by_first_pref']
+    complete_by_first_pref = preference_analysis['complete_by_first_pref']
+    total_exhausted = preference_analysis['total_exhausted']
+
+    if total_exhausted == 0:
+        return 0.5
+
+    # Prior parameters based on gap (percentage scale, α + β = 100)
+    base_param = 50.0
+    max_shift = min(gap_to_win_pct * 0.5, 40)
+    a_prior = max(base_param - max_shift, 10.0)
+    b_prior = max(base_param + max_shift, 10.0)
+
+    # Calculate observed evidence (expected completions)
+    total_expected_candidate = 0
+    total_expected_others = 0
+
+    for first_pref, count in exh_by_first_pref.items():
+        if first_pref in complete_by_first_pref and complete_by_first_pref[first_pref]['total'] > 0:
+            category_data = complete_by_first_pref[first_pref]
+            prob_candidate_first = category_data['candidate_first'] / category_data['total']
+
+            total_expected_candidate += count * prob_candidate_first
+            total_expected_others += count * (1 - prob_candidate_first)
+        else:
+            total_complete = sum(data['total'] for data in complete_by_first_pref.values())
+            total_candidate_first = sum(data['candidate_first'] for data in complete_by_first_pref.values())
+
+            if total_complete > 0:
+                overall_prob = total_candidate_first / total_complete
+                total_expected_candidate += count * overall_prob
+                total_expected_others += count * (1 - overall_prob)
+
+    # Convert observed evidence to percentages
+    total_expected = total_expected_candidate + total_expected_others
+    if total_expected > 0:
+        candidate_over_others_pct = 100 * total_expected_candidate / total_expected
+        others_over_candidate_pct = 100 * total_expected_others / total_expected
+
+        # Weighted combination
+        weight_prior = 1.0
+        weight_data = 1.0
+
+        a_post = (weight_prior * a_prior + weight_data * candidate_over_others_pct) / (weight_prior + weight_data)
+        b_post = (weight_prior * b_prior + weight_data * others_over_candidate_pct) / (weight_prior + weight_data)
+    else:
+        a_post = a_prior
+        b_post = b_prior
+
+    # Calculate probability
+    required_proportion = required_preference_pct / 100
+    probability = 1 - stats.beta.cdf(required_proportion, a_post, b_post)
+
+    return probability
+
+
+def category_bootstrap_multi_winner(preference_analysis, candidate_letter, active_candidates,
+                                  required_preference_pct, gap_to_win_pct, n_bootstrap=1000):
+    """
+    Category-based bootstrap for multi-winner STV.
+    Samples completions based on first-preference category patterns.
+    """
+    exh_by_first_pref = preference_analysis['exhausted_by_first_pref']
+    complete_by_first_pref = preference_analysis['complete_by_first_pref']
+    total_exhausted = preference_analysis['total_exhausted']
+
+    if total_exhausted == 0:
+        return 0.5, (0.5, 0.5)
+
+    # Calculate votes needed for candidate to win (net advantage needed)
+    votes_needed = int((required_preference_pct - 50) * total_exhausted / 100)
+
+    # Run bootstrap iterations
+    candidate_win_counts = 0
+
+    for i in range(n_bootstrap):
+        net_votes_for_candidate = 0
+
+        # Process each category of exhausted ballots
+        for first_pref, count in exh_by_first_pref.items():
+            if first_pref in complete_by_first_pref and complete_by_first_pref[first_pref]['total'] > 0:
+                category_data = complete_by_first_pref[first_pref]
+                prob_candidate_first = category_data['candidate_first'] / category_data['total']
+
+                # Sample candidate vs others preferences for this category
+                candidate_completions = np.random.binomial(count, prob_candidate_first)
+                others_completions = count - candidate_completions
+                net_votes_for_candidate += (candidate_completions - others_completions)
+            else:
+                # Use overall distribution if no category data
+                total_complete = sum(data['total'] for data in complete_by_first_pref.values())
+                total_candidate_first = sum(data['candidate_first'] for data in complete_by_first_pref.values())
+
+                if total_complete > 0:
+                    overall_prob = total_candidate_first / total_complete
+                    candidate_completions = np.random.binomial(count, overall_prob)
+                    others_completions = count - candidate_completions
+                    net_votes_for_candidate += (candidate_completions - others_completions)
+
+        # Check if candidate wins
+        if net_votes_for_candidate >= votes_needed:
+            candidate_win_counts += 1
+
+    # Calculate probability and confidence interval
+    win_probability = candidate_win_counts / n_bootstrap
+    se = np.sqrt((win_probability * (1 - win_probability)) / n_bootstrap)
+    ci_lower = max(0, win_probability - 1.96 * se)
+    ci_upper = min(1, win_probability + 1.96 * se)
+
+    return win_probability, (ci_lower, ci_upper)
+
+
+def unconditional_bootstrap_multi_winner(ballot_counts, exhausted_ballots, candidate_letter, active_candidates,
+                                        required_preference_pct, gap_to_win_pct, n_bootstrap=1000, max_rankings=6):
+    """
+    Unconditional Bootstrap model for multi-winner STV.
+    Samples from ALL ballots that rank any active candidate.
+    """
+    total_exhausted = sum(exhausted_ballots.values())
+    if total_exhausted == 0:
+        return 0.5, (0.5, 0.5)
+
+    # Calculate votes needed for candidate to win
+    votes_needed = int((required_preference_pct - 50) * total_exhausted / 100)
+
+    # Find all ballots that rank any active candidate
+    candidate_first_total = 0
+    others_first_total = 0
+
+    for ballot, count in ballot_counts.items():
+        if ballot and any(c in active_candidates for c in ballot):
+            # Determine if candidate or others are ranked highest among active candidates
+            ballot_active_candidates = [c for c in ballot if c in active_candidates]
+
+            if candidate_letter in ballot_active_candidates:
+                candidate_pos = ballot.index(candidate_letter)
+                other_active_positions = [ballot.index(c) for c in ballot_active_candidates if c != candidate_letter]
+
+                if not other_active_positions or candidate_pos < min(other_active_positions):
+                    candidate_first_total += count
+                else:
+                    others_first_total += count
+            else:
+                others_first_total += count
+
+    if candidate_first_total + others_first_total == 0:
+        return 0.5, (0.5, 0.5)
+
+    # Calculate overall probability that candidate is preferred
+    overall_prob_candidate_first = candidate_first_total / (candidate_first_total + others_first_total)
+
+    # Run bootstrap iterations
+    candidate_win_counts = 0
+
+    for i in range(n_bootstrap):
+        candidate_completions = np.random.binomial(total_exhausted, overall_prob_candidate_first)
+        others_completions = total_exhausted - candidate_completions
+        net_votes_for_candidate = candidate_completions - others_completions
+
+        if net_votes_for_candidate >= votes_needed:
+            candidate_win_counts += 1
+
+    # Calculate probability and confidence interval
+    win_probability = candidate_win_counts / n_bootstrap
+    se = np.sqrt((win_probability * (1 - win_probability)) / n_bootstrap)
+    ci_lower = max(0, win_probability - 1.96 * se)
+    ci_upper = min(1, win_probability + 1.96 * se)
+
+    return win_probability, (ci_lower, ci_upper)
+
+
+def limited_ranking_bootstrap_multi_winner(ballot_counts, exhausted_ballots, candidate_letter, active_candidates,
+                                          required_preference_pct, gap_to_win_pct, n_bootstrap=1000, max_rankings=6):
+    """
+    Rank-Restricted Bootstrap for multi-winner STV.
+    Only considers partial ballots (with room for more rankings).
+    """
+    total_exhausted = sum(exhausted_ballots.values())
+    if total_exhausted == 0:
+        return 0.5, (0.5, 0.5)
+
+    # Count partial exhausted ballots (fewer than max_rankings)
+    partial_exhausted = sum(count for ballot, count in exhausted_ballots.items()
+                           if len(ballot) < max_rankings)
+
+    if partial_exhausted == 0:
+        return 0.5, (0.5, 0.5)
+
+    # Calculate votes needed
+    votes_needed = int((required_preference_pct - 50) * partial_exhausted / 100)
+
+    # Find ballots that rank any active candidate (for sampling distribution)
+    candidate_first_total = 0
+    others_first_total = 0
+
+    for ballot, count in ballot_counts.items():
+        if ballot and any(c in active_candidates for c in ballot):
+            ballot_active_candidates = [c for c in ballot if c in active_candidates]
+
+            if candidate_letter in ballot_active_candidates:
+                candidate_pos = ballot.index(candidate_letter)
+                other_active_positions = [ballot.index(c) for c in ballot_active_candidates if c != candidate_letter]
+
+                if not other_active_positions or candidate_pos < min(other_active_positions):
+                    candidate_first_total += count
+                else:
+                    others_first_total += count
+            else:
+                others_first_total += count
+
+    if candidate_first_total + others_first_total == 0:
+        return 0.5, (0.5, 0.5)
+
+    overall_prob_candidate_first = candidate_first_total / (candidate_first_total + others_first_total)
+
+    # Run bootstrap iterations
+    candidate_win_counts = 0
+
+    for i in range(n_bootstrap):
+        candidate_completions = np.random.binomial(partial_exhausted, overall_prob_candidate_first)
+        others_completions = partial_exhausted - candidate_completions
+        net_votes_for_candidate = candidate_completions - others_completions
+
+        if net_votes_for_candidate >= votes_needed:
+            candidate_win_counts += 1
+
+    win_probability = candidate_win_counts / n_bootstrap
+    se = np.sqrt((win_probability * (1 - win_probability)) / n_bootstrap)
+    ci_lower = max(0, win_probability - 1.96 * se)
+    ci_upper = min(1, win_probability + 1.96 * se)
+
+    return win_probability, (ci_lower, ci_upper)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Analyze RCV elections to compare exhaust and strategy.')

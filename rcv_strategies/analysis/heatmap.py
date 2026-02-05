@@ -1,3 +1,9 @@
+# Paper figure produced by this script:
+#   - Fig 7: heatmap.png (Fig \ref{fig:heatmap_prb}, label app:ballot_exhaustion_single_winner)
+#
+# Input data:
+#   - ballot_exhaustion/model_comparison_results/all_elections_analysis.csv
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
