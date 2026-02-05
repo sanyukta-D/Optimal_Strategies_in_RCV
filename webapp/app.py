@@ -57,6 +57,12 @@ except ImportError as e:
     PROB_MODELS_AVAILABLE = False
     print(f"Probability models not available: {e}")
 
+# === CLEANUP ZOMBIE WORKERS ON STREAMLIT RERUN ===
+# When Streamlit reruns (widget change, navigation), kill any leftover pool workers
+# from a previous run. This runs at the TOP of every rerun before any analysis starts.
+from rcv_strategies.core.strategy import _cleanup_pool
+_cleanup_pool()
+
 # === PAGE CONFIG ===
 st.set_page_config(
     page_title="RCV Election Analyzer",

@@ -75,11 +75,28 @@ import math
 import multiprocessing as mp
 from multiprocessing import Pool
 from functools import partial
+import atexit
 
 
 # Set multiprocessing start method BEFORE your custom imports
 if __name__ == '__main__':
     mp.set_start_method('fork', force=True)
+
+# Global reference to active pool — allows cleanup from atexit/Streamlit rerun
+_active_pool = None
+
+def _cleanup_pool():
+    """Kill any lingering pool workers. Registered with atexit."""
+    global _active_pool
+    if _active_pool is not None:
+        try:
+            _active_pool.terminate()
+            _active_pool.join(timeout=5)
+        except Exception:
+            pass
+        _active_pool = None
+
+atexit.register(_cleanup_pool)
 
 def add_campaign(log_campaign_list, main_st, remaining_candidates, decoded_dict, Q, k, t, stdt, budget):
     """
@@ -913,11 +930,17 @@ def reach_any_winners_campaign_parallel(candidates, k, Q, ballot_counts, budget,
         allowed_length=allowed_length
     )
     
-    # Process in parallel with explicit cleanup for Streamlit environment
-    pool = None
+    # Process in parallel with robust cleanup for Streamlit environment.
+    # Uses global _active_pool so atexit handler can kill workers if the
+    # main thread is interrupted (Streamlit rerun, page navigation, etc.)
+    global _active_pool
+
+    # Kill any pool left over from a previous interrupted run
+    _cleanup_pool()
+
     try:
-        pool = Pool(processes=None)
-        all_results = pool.map(process_func, all_combinations)
+        _active_pool = Pool(processes=None)
+        all_results = _active_pool.map(process_func, all_combinations)
 
         # Process results
         for result in all_results:
@@ -927,6 +950,5 @@ def reach_any_winners_campaign_parallel(candidates, k, Q, ballot_counts, budget,
 
         return {x: y for x, y in strats_frame.items() if y[0] >= 0}
     finally:
-        if pool is not None:
-            pool.terminate()  # Kill workers immediately
-            pool.join()       # Wait for them to actually stop
+        # Normal cleanup path — also covers exceptions/StopException
+        _cleanup_pool()
