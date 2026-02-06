@@ -24,19 +24,9 @@ pip install -r requirements.txt
 
 **Try it online:** Upload your election data and get instant analysis!
 
-### Run Locally
-```bash
-pip install -r webapp/requirements.txt
-streamlit run webapp/app.py
-```
+[https://rcv-analyzer.streamlit.app/]
 
-### Deploy to Streamlit Cloud (Free)
-1. Fork this repo
-2. Go to [share.streamlit.io](https://share.streamlit.io)
-3. Connect your repo, set main file to `webapp/app.py`
-4. Click Deploy
-
-See [webapp/README.md](webapp/README.md) for details.
+See [https://github.com/sanyukta-D/RCV-Analyzer-Webapp] for details.
 
 ## Repository Structure
 
