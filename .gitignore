@@ -43,3 +43,12 @@ dataverse_files*/
 
 # Internal docs
 PAPER_REPRODUCTION_GUIDE.md
+CLAUDE.md
+docs/
+
+# Dev environment
+.devcontainer/
+
+# Webapp (moved to RCV-Analyzer-Webapp repo)
+.streamlit/
+requirements_deploy.txt
