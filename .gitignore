@@ -40,3 +40,6 @@ dataverse_files*/
 
 # Claude Code
 .claude/
+
+# Internal docs
+PAPER_REPRODUCTION_GUIDE.md

@@ -40,7 +40,7 @@ from rcv_strategies.utils.helpers import get_new_dict, return_main_sub
 
 # Path to dataverse files - comprehensive RCV election dataset
 # Contains 607 elections across 29 jurisdictions (2004-2025)
-DATAVERSE_DIR = Path(__file__).parent.parent / "dataverse_files (1)"
+DATAVERSE_DIR = Path(__file__).parent.parent / "dataverse_files"
 
 
 def load_and_prepare_election(csv_path):
