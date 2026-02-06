@@ -44,6 +44,7 @@ dataverse_files*/
 # Internal docs
 PAPER_REPRODUCTION_GUIDE.md
 CLAUDE.md
+CITATION.cff
 docs/
 
 # Dev environment
