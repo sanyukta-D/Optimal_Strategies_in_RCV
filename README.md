@@ -24,9 +24,9 @@ pip install -r requirements.txt
 
 **Try it online:** Upload your election data and get instant analysis!
 
-[https://rcv-analyzer.streamlit.app/]
+https://rcv-analyzer.streamlit.app/
 
-See [https://github.com/sanyukta-D/RCV-Analyzer-Webapp] for details.
+See https://github.com/sanyukta-D/RCV-Analyzer-Webapp for details.
 
 ## Repository Structure
 
